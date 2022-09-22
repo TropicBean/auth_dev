@@ -1,0 +1,4 @@
+Invalid version, 1100 (expected 1200) in object file r:\mmp\fbp\core\rcode117\cls\mipenvironment.r. (2888)
+Invalid datatype specified: cls.mipenvironment. Specify a datatype such as 'character' or the name of a class. (5638)
+** r:\mmp\fbp\core\source\mip\inc\mipdefshared.i Could not understand line 22. (196)
+** r:\mmp\fbp\masrc\ma\app\maauthbusinesslogicstack.p Could not understand line 20. (196)
