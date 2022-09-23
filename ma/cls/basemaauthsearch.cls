@@ -25,7 +25,7 @@ CLASS ma.cls.basemaauthsearch INHERITS cls.mipdataretrieval:
       Purpose:
   -----------------------------------------------------------------------------*/
   
-    SUPER(iphDataset).    
+     SUPER(iphDataset).    
 
   END CONSTRUCTOR. /* CONSTRUCTOR PUBLIC basemaauthsearch */
   
@@ -39,13 +39,24 @@ CLASS ma.cls.basemaauthsearch INHERITS cls.mipdataretrieval:
 
 &IF {&DBDFMA} >= 010195 &THEN    
 
-    IF NOT VALID-OBJECT(mipEnv:Health)                THEN RETURN ERROR {mip/inc/miperrortext.i "'MA'" 0 "'Healthcare application not started.'"}.  
-    IF NOT VALID-OBJECT(mipEnv:Health:AuthDataAccess) THEN RETURN ERROR {mip/inc/miperrortext.i "'MA'" 0 "'Authorisation data service not started'"}.
-    
+   /*  
+       !Do not uncomment until we have managed to set up healthcare services
+       IF NOT VALID-OBJECT(mipEnv:Health)                THEN RETURN ERROR {mip/inc/miperrortext.i "'MA'" 0 "'Healthcare application not started.'"}.  
+       IF NOT VALID-OBJECT(mipEnv:Health:AuthDataAccess) THEN RETURN ERROR {mip/inc/miperrortext.i "'MA'" 0 "'Authorisation data service not started'"}.
+    */ 
+
     IF NOT datasetComplete()
     THEN
-    DO:     
-      mipEnv:Health:AuthDataAccess:fetchAuthorisationDataset(INPUT CAST(THIS-OBJECT,"cls.maauthsearch":U)).             
+    DO:      
+      /*
+         ! Do not uncomment until we have done the following: 
+         TODO: Get healthcare data service up and running so that we can use this method 
+         - We'll need to set up auth tables before we can do this 
+         Rather than calling the service here , we're just going to populate the auth dataset from a hard set json file
+         mipEnv:Health:AuthDataAccess:fetchAuthorisationDataset(INPUT CAST(THIS-OBJECT,"cls.maauthsearch":U)).*/ 
+      
+      DatasetHandle:READ-JSON("FILE", "C:\localenv\000mip\trn\hotfix\db\json\authds.json") .
+
     END.
 
 &ENDIF
