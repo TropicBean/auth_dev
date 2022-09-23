@@ -1,0 +1,623 @@
+ADD TABLE "hat_auth"
+  AREA "Data TX"
+  DESCRIPTION "Authorisation master file. It is the header file containing all the details for the total case - main provider and associated services. "
+  DUMP-NAME "hatau"
+  TABLE-TRIGGER "Create" OVERRIDE PROCEDURE "ma/trg/hatautrigc.p" CRC "?" 
+  TABLE-TRIGGER "Delete" OVERRIDE PROCEDURE "ma/trg/hatautrigd.p" CRC "?" 
+  TABLE-TRIGGER "Write" OVERRIDE PROCEDURE "ma/trg/hatautrigw.p" CRC "?" 
+
+ADD FIELD "auth_episode_obj" OF "hat_auth" AS decimal 
+  DESCRIPTION "Authorisation episode obj linking to table hat_auth_episode.  The episode will be used to link different authorisations together.
+"
+  FORMAT ">>>>>>>>>>>>>>>>>9.999999"
+  INITIAL "0"
+  LABEL "Episode Obj"
+  POSITION 3
+  MAX-WIDTH 21
+  COLUMN-LABEL "Episode Obj"
+  DECIMALS 6
+  ORDER 20
+
+ADD FIELD "mem_num" OF "hat_auth" AS character 
+  DESCRIPTION "Member number"
+  FORMAT "x(13)"
+  INITIAL ""
+  LABEL "Member #"
+  POSITION 4
+  MAX-WIDTH 26
+  COLUMN-LABEL "Member"
+  ORDER 30
+
+ADD FIELD "dependant" OF "hat_auth" AS integer 
+  DESCRIPTION "Dependant number for which authorisation is added "
+  FORMAT "99"
+  INITIAL "0"
+  LABEL "Dependant"
+  POSITION 5
+  MAX-WIDTH 4
+  COLUMN-LABEL "Dependant"
+  ORDER 40
+
+ADD FIELD "auth_num" OF "hat_auth" AS character 
+  DESCRIPTION "Unique authorisation number for dependant authorisation             
+"
+  FORMAT "x(15)"
+  INITIAL ""
+  LABEL "Auth #"
+  POSITION 6
+  MAX-WIDTH 30
+  COLUMN-LABEL "Auth #"
+  ORDER 50
+
+ADD FIELD "auth_status" OF "hat_auth" AS integer 
+  DESCRIPTION "Indication of status of authorisation. Valid status values are 0-Pending,1-Approved,2-Assessed,4-Complete,5-Cancelled,6-Declined"
+  FORMAT "9"
+  INITIAL "0"
+  LABEL "Auth status"
+  POSITION 7
+  MAX-WIDTH 4
+  COLUMN-LABEL "Auth status"
+  ORDER 60
+
+ADD FIELD "auth_status_note" OF "hat_auth" AS character 
+  DESCRIPTION "Authorisation status reason (note), i.e. reason why an authorisation is denied.  Valid values are set up note table with note.scheme-code = 00 and note.type = 'AS'. Notes linking to a specific authorisation status will be stored with AS9 where 9 = authorisation status."
+  FORMAT "x(3)"
+  INITIAL ""
+  LABEL "Auth status note"
+  POSITION 8
+  MAX-WIDTH 6
+  COLUMN-LABEL "Auth status note"
+  ORDER 300
+
+ADD FIELD "option_code" OF "hat_auth" AS integer 
+  DESCRIPTION "Option code for different scheme options.  If authorisation is not loaded for a specific scheme the scheme code will be zero."
+  FORMAT "999"
+  INITIAL "0"
+  LABEL "Option Code"
+  POSITION 9
+  MAX-WIDTH 4
+  COLUMN-LABEL "Option"
+  ORDER 310
+
+ADD FIELD "insurer_obj" OF "hat_auth" AS decimal 
+  DESCRIPTION "Client "
+  FORMAT ">>>>>>>>>>>>>>>>>9.999999"
+  INITIAL "0"
+  LABEL "Client"
+  POSITION 10
+  MAX-WIDTH 21
+  COLUMN-LABEL "Client"
+  DECIMALS 6
+  ORDER 320
+
+ADD FIELD "auth_date" OF "hat_auth" AS date 
+  DESCRIPTION "Date on which authorisation was done (system date)"
+  FORMAT "9999/99/99"
+  INITIAL ?
+  LABEL "Auth date"
+  POSITION 11
+  MAX-WIDTH 4
+  COLUMN-LABEL "Auth!date"
+  ORDER 330
+
+ADD FIELD "request_date" OF "hat_auth" AS date 
+  DESCRIPTION "Date on which authorisation was requested"
+  FORMAT "9999/99/99"
+  INITIAL ?
+  LABEL "Request date"
+  POSITION 12
+  MAX-WIDTH 4
+  COLUMN-LABEL "Request date"
+  ORDER 340
+
+ADD FIELD "request_by" OF "hat_auth" AS character 
+  DESCRIPTION "Type of person requesting the authorisation, i.e. Member/Provider/Hospital. Valid values will be stored in mic_acronym table where category_key = ma_acAuthRequestByType."
+  FORMAT "x(60)"
+  INITIAL ""
+  LABEL "Requested by"
+  POSITION 13
+  MAX-WIDTH 120
+  COLUMN-LABEL "Requested by"
+  ORDER 350
+
+ADD FIELD "request_source" OF "hat_auth" AS character 
+  DESCRIPTION "Source from which authorisation is requested i.e. email, fax, telephone etc. Valid values will be stored in mic_acronym table where category_key = ma_acAuthRequestSource.
+"
+  FORMAT "x(20)"
+  INITIAL ""
+  LABEL "Request source"
+  POSITION 14
+  MAX-WIDTH 40
+  COLUMN-LABEL "Request source"
+  ORDER 360
+
+ADD FIELD "end_ampm" OF "hat_auth" AS logical 
+  DESCRIPTION "Authorised end time - AM/PM"
+  FORMAT "AM/PM"
+  INITIAL "no"
+  LABEL "Auth. end time"
+  POSITION 17
+  MAX-WIDTH 1
+  COLUMN-LABEL "Auth ET"
+  ORDER 295
+
+ADD FIELD "start_date" OF "hat_auth" AS date 
+  DESCRIPTION "Authorisation start date  "
+  FORMAT "9999/99/99"
+  INITIAL ?
+  LABEL "Start date"
+  POSITION 18
+  MAX-WIDTH 4
+  COLUMN-LABEL "Start!date"
+  ORDER 400
+
+ADD FIELD "end_date" OF "hat_auth" AS date 
+  DESCRIPTION "Authorisation end date"
+  FORMAT "9999/99/99"
+  INITIAL ?
+  LABEL "End date"
+  POSITION 19
+  MAX-WIDTH 4
+  COLUMN-LABEL "End date"
+  ORDER 410
+
+ADD FIELD "amount_auth" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount authorised for case - for main provider and associated providers "
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Auth amount"
+  POSITION 21
+  MAX-WIDTH 17
+  COLUMN-LABEL "Auth!amount"
+  DECIMALS 2
+  ORDER 430
+
+ADD FIELD "amount_requested" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount requested for the case - for main provider and associated providers"
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Amount requested"
+  POSITION 22
+  MAX-WIDTH 17
+  COLUMN-LABEL "Amount!requested"
+  DECIMALS 2
+  ORDER 440
+
+ADD FIELD "amount_paid" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount paid for case - for main provider and associated providers "
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Auth paid"
+  POSITION 23
+  MAX-WIDTH 17
+  COLUMN-LABEL "Auth!paid"
+  DECIMALS 2
+  ORDER 450
+
+ADD FIELD "amount_interim" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total interim amount for case - for main provider and associated providers  "
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Interim amount"
+  POSITION 24
+  MAX-WIDTH 17
+  COLUMN-LABEL "Interim!amount"
+  DECIMALS 2
+  ORDER 460
+
+ADD FIELD "amount_claimed" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total claimed amount for case - for main provider and associated providers "
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Claimed amount"
+  POSITION 25
+  MAX-WIDTH 17
+  COLUMN-LABEL "Claimed!amount"
+  DECIMALS 2
+  ORDER 470
+
+ADD FIELD "discount_auth" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total discount for case - for main provider and associated providers           "
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Discount authorised"
+  POSITION 26
+  MAX-WIDTH 17
+  COLUMN-LABEL "Discount!authorised"
+  DECIMALS 2
+  ORDER 480
+
+ADD FIELD "discount_paid" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total discount paid for case - for main provider and associated providers
+"
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Discount paid"
+  POSITION 27
+  MAX-WIDTH 17
+  COLUMN-LABEL "Discount!paid"
+  DECIMALS 2
+  ORDER 490
+
+ADD FIELD "discount_type" OF "hat_auth" AS logical 
+  DESCRIPTION "Discount type:  P = Percentage / R = Rand amount for case"
+  FORMAT "P/R"
+  INITIAL "no"
+  LABEL "Discount type"
+  POSITION 28
+  MAX-WIDTH 1
+  COLUMN-LABEL "Disc!type"
+  ORDER 500
+
+ADD FIELD "claim_code" OF "hat_auth" AS integer 
+  DESCRIPTION "Claim code for case"
+  FORMAT "999"
+  INITIAL "0"
+  LABEL "Claim code"
+  POSITION 29
+  MAX-WIDTH 4
+  COLUMN-LABEL "C/C"
+  ORDER 510
+
+ADD FIELD "claim_type" OF "hat_auth" AS character 
+  DESCRIPTION "Claim type for case"
+  FORMAT "!(1)"
+  INITIAL ""
+  LABEL "Claim type"
+  POSITION 30
+  MAX-WIDTH 2
+  COLUMN-LABEL "C/T"
+  HELP "C=consultation, O=other, N=non eligible, A=acute, K=Chronic"
+  ORDER 520
+
+ADD FIELD "auth_type_obj" OF "hat_auth" AS decimal 
+  DESCRIPTION "Authorisation type obj that links to table hac_auth_type"
+  FORMAT ">>>>>>>>>>>>>>>>>9.999999"
+  INITIAL "0"
+  LABEL "Authorisation type obj"
+  POSITION 31
+  MAX-WIDTH 21
+  COLUMN-LABEL "Authorisation type"
+  DECIMALS 6
+  ORDER 530
+
+ADD FIELD "user_id" OF "hat_auth" AS character 
+  DESCRIPTION "Person by whom the authorisation was done"
+  FORMAT "x(8)"
+  INITIAL ""
+  LABEL "User ID"
+  POSITION 32
+  MAX-WIDTH 16
+  COLUMN-LABEL "User ID"
+  ORDER 540
+
+ADD FIELD "auth_obj" OF "hat_auth" AS decimal 
+  DESCRIPTION "Unique authorisation obj                                        "
+  FORMAT ">>>>>>>>>>>>>>>>>9.999999"
+  INITIAL "0"
+  LABEL "Authorisation obj"
+  POSITION 34
+  MAX-WIDTH 21
+  COLUMN-LABEL "Auth!obj"
+  DECIMALS 6
+  ORDER 560
+
+ADD FIELD "reference_auth_num" OF "hat_auth" AS character 
+  DESCRIPTION "Reference authorisation number for 3rd party references"
+  FORMAT "x(40)"
+  INITIAL ""
+  LABEL "Reference auth.#"
+  POSITION 36
+  MAX-WIDTH 40
+  COLUMN-LABEL "Ref!auth!num"
+  ORDER 580
+
+ADD FIELD "start_ampm" OF "hat_auth" AS logical 
+  DESCRIPTION "Authorised start time - AM/PM"
+  FORMAT "AM/PM"
+  INITIAL "no"
+  LABEL "Auth. start time"
+  POSITION 37
+  MAX-WIDTH 1
+  COLUMN-LABEL "Auth ST"
+  ORDER 290
+
+ADD FIELD "adjustment_auth" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount authorised for current savings (B/M account) for case - main provider and associated providers"
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Savings authorised"
+  POSITION 40
+  MAX-WIDTH 17
+  COLUMN-LABEL "Savings!authorised"
+  DECIMALS 2
+  ORDER 250
+
+ADD FIELD "adjustment_paid" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount paid from current savings (B/M account) for case - main provider and associated services"
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Savings paid"
+  POSITION 41
+  MAX-WIDTH 17
+  COLUMN-LABEL "Savings!paid"
+  DECIMALS 2
+  ORDER 660
+
+ADD FIELD "adjustment_private_auth" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount authorised for case to pay from other savings. Can be previous year savings or private savings.  Amount will apply to main provider and associated services."
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Other savings authorised"
+  POSITION 42
+  MAX-WIDTH 17
+  COLUMN-LABEL "Other!savings!authorised"
+  DECIMALS 2
+  ORDER 590
+
+ADD FIELD "adjustment_private_paid" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount for case paid from other savings - main provider and associated providers
+"
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Other savings paid"
+  POSITION 43
+  MAX-WIDTH 17
+  COLUMN-LABEL "Other savings paid"
+  DECIMALS 2
+  ORDER 600
+
+ADD FIELD "pmb_value" OF "hat_auth" AS decimal 
+  DESCRIPTION "PMB value will contain amount that must be allocated to PMB limit on the authorised value"
+  FORMAT "->>>,>>9.99"
+  INITIAL "0"
+  LABEL "PMB Value"
+  POSITION 44
+  MAX-WIDTH 17
+  COLUMN-LABEL "PMB Value"
+  DECIMALS 2
+  ORDER 690
+
+ADD FIELD "quantity_paid" OF "hat_auth" AS integer 
+  DESCRIPTION "Quantity paid for case - for main provider and associated providers "
+  FORMAT ">>>>9"
+  INITIAL "0"
+  LABEL "Qty. Paid"
+  POSITION 46
+  MAX-WIDTH 4
+  COLUMN-LABEL "Qty. Paid"
+  ORDER 710
+
+ADD FIELD "quantity_requested" OF "hat_auth" AS integer 
+  DESCRIPTION "Quantity requested for case - for main providers and associated providers"
+  FORMAT ">>>>9"
+  INITIAL "0"
+  LABEL "Quantity requested"
+  POSITION 48
+  MAX-WIDTH 4
+  COLUMN-LABEL "Quantity requested"
+  ORDER 720
+
+ADD FIELD "pmb_benefit_%" OF "hat_auth" AS decimal 
+  DESCRIPTION "PMB benefit % that should apply if it is a PMB"
+  FORMAT "999.99"
+  INITIAL "0"
+  LABEL "PMB benefit %"
+  POSITION 49
+  MAX-WIDTH 17
+  COLUMN-LABEL "PMB!benefit %"
+  DECIMALS 2
+  ORDER 730
+
+ADD FIELD "pmb_pay_cost" OF "hat_auth" AS logical 
+  DESCRIPTION "PMB pay at cost indicator will indicate if claim must pay at cost (what is claimed) if it is a PMB
+"
+  FORMAT "yes/no"
+  INITIAL "no"
+  LABEL "PMB pay at cost"
+  POSITION 50
+  MAX-WIDTH 1
+  COLUMN-LABEL "PMB!pay!at!cost"
+  ORDER 740
+
+ADD FIELD "body_region" OF "hat_auth" AS character 
+  DESCRIPTION "Body region. Valid values will be stored on the mic_acronym table where category_key = ma_acAuthBodyRegion."
+  FORMAT "x(10)"
+  INITIAL ""
+  LABEL "Body region"
+  POSITION 51
+  MAX-WIDTH 20
+  COLUMN-LABEL "Body region"
+  ORDER 750
+
+ADD FIELD "mouth_part_id" OF "hat_auth" AS integer 
+  DESCRIPTION "Mouth part ids where teeth numbers will be stored for dental authorisations"
+  FORMAT "99"
+  INITIAL "0"
+  LABEL "Mouth part id"
+  POSITION 52
+  MAX-WIDTH 60
+  COLUMN-LABEL "Mouth!part id"
+  EXTENT 10
+  ORDER 760
+
+ADD FIELD "pmb_indicator" OF "hat_auth" AS logical 
+  DESCRIPTION "Indicate if PMB rules must apply for total case - main provider and associated services"
+  FORMAT "yes/no"
+  INITIAL "no"
+  LABEL "PMB indicator"
+  POSITION 53
+  MAX-WIDTH 1
+  COLUMN-LABEL "PMB indicator"
+  ORDER 770
+
+ADD FIELD "amount_total" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total amount authorised on detail lines for case - for main provider and associated providers "
+  FORMAT "->,>>>,>>9.99"
+  INITIAL "0"
+  LABEL "Total amount"
+  POSITION 54
+  MAX-WIDTH 17
+  COLUMN-LABEL "Total!amount"
+  DECIMALS 2
+  ORDER 475
+
+ADD FIELD "quantity_auth" OF "hat_auth" AS integer 
+  DESCRIPTION "Quantity authorised for case - for main provider and associated providers"
+  FORMAT ">>>>9"
+  INITIAL "0"
+  LABEL "Quantity"
+  POSITION 55
+  MAX-WIDTH 4
+  COLUMN-LABEL "Qty."
+  ORDER 790
+
+ADD FIELD "auth_incomplete" OF "hat_auth" AS logical 
+  DESCRIPTION "Indicate if the capture of the authorisation is complete. Only once an authorisation is completed will final validations and limit checks be applied, submitted and saved."
+  FORMAT "yes/no"
+  INITIAL "yes"
+  LABEL "Authorisation incomplete"
+  POSITION 56
+  MAX-WIDTH 1
+  COLUMN-LABEL "Auth!incomplete"
+  ORDER 800
+
+ADD FIELD "quantity_claimed" OF "hat_auth" AS integer 
+  DESCRIPTION "Quantity claimed for case - for main provider and associated providers"
+  FORMAT ">>>>9"
+  INITIAL "0"
+  LABEL "Quantity claimed"
+  POSITION 57
+  MAX-WIDTH 4
+  COLUMN-LABEL "Qty.!claimed"
+  ORDER 810
+
+ADD FIELD "due_date" OF "hat_auth" AS date 
+  DESCRIPTION "Due date for authorisation, i.e. expected date of delivery for maternity"
+  FORMAT "9999/99/99"
+  INITIAL ?
+  LABEL "Due date"
+  POSITION 58
+  MAX-WIDTH 4
+  COLUMN-LABEL "Due date"
+  ORDER 820
+
+ADD FIELD "benefit_%" OF "hat_auth" AS decimal 
+  DESCRIPTION "Benefit % that should apply in assessing if claim is not a PMB claim for main provider and associated services."
+  FORMAT "999.99"
+  INITIAL "0"
+  LABEL "Benefit %"
+  POSITION 59
+  MAX-WIDTH 17
+  COLUMN-LABEL "Benefit %"
+  DECIMALS 2
+  ORDER 830
+
+ADD FIELD "authorise_all_services" OF "hat_auth" AS logical 
+  DESCRIPTION "New field to indicate if all services should be authorised when claims are paid.  Equivalent of old claim code 888 authorisations."
+  FORMAT "yes/no"
+  INITIAL "no"
+  LABEL "Authorise all services"
+  POSITION 60
+  MAX-WIDTH 1
+  COLUMN-LABEL "Authorise!all!services"
+  ORDER 840
+
+ADD FIELD "request_source_details" OF "hat_auth" AS character 
+  DESCRIPTION "Additional information for the request source."
+  FORMAT "x(40)"
+  INITIAL ""
+  LABEL "Request source details"
+  POSITION 64
+  MAX-WIDTH 80
+  COLUMN-LABEL "Request!source!details"
+  ORDER 880
+
+ADD FIELD "next_of_kin" OF "hat_auth" AS character 
+  DESCRIPTION "Next of kin details that can be used in case of an emergency"
+  FORMAT "x(60)"
+  INITIAL ""
+  LABEL "Next of kin"
+  POSITION 66
+  MAX-WIDTH 120
+  COLUMN-LABEL "Next of kin"
+  ORDER 900
+
+ADD FIELD "service_type" OF "hat_auth" AS character 
+  DESCRIPTION "Service type to which the authorisation will apply, e.g. Medical/Surgical. Valid values will be stored on the mic_category table where category_key = 'ma_acServiceType'."
+  FORMAT "x(40)"
+  INITIAL ""
+  LABEL "Service type"
+  POSITION 67
+  MAX-WIDTH 80
+  COLUMN-LABEL "Service!type"
+  ORDER 910
+
+ADD FIELD "total_los" OF "hat_auth" AS decimal 
+  DESCRIPTION "Total LOS (Length of stay) for the authorisation."
+  FORMAT "->>>9.99"
+  INITIAL "0"
+  LABEL "Total LOS"
+  POSITION 68
+  MAX-WIDTH 17
+  COLUMN-LABEL "Total!LOS"
+  DECIMALS 2
+  ORDER 920
+
+ADD FIELD "default_claim_code" OF "hat_auth" AS integer 
+  DESCRIPTION "Default claim code for the authorisation."
+  FORMAT "999"
+  INITIAL "0"
+  LABEL "Default claim code"
+  POSITION 69
+  MAX-WIDTH 4
+  COLUMN-LABEL "Def C/C"
+  ORDER 930
+
+ADD FIELD "default_claim_type" OF "hat_auth" AS character 
+  DESCRIPTION "Default claim type for the authorisation."
+  FORMAT "!(1)"
+  INITIAL ""
+  LABEL "Default claim type"
+  POSITION 70
+  MAX-WIDTH 2
+  COLUMN-LABEL "Def C/T"
+  ORDER 940
+
+ADD FIELD "dependant_reference" OF "hat_auth" AS character 
+  DESCRIPTION "Used to capture identifying information for a dependant 99. eg. a name, or 'twin 1'"
+  FORMAT "x(40)"
+  INITIAL ""
+  LABEL "Dependant ref."
+  POSITION 71
+  MAX-WIDTH 80
+  COLUMN-LABEL "Dep!ref"
+  ORDER 950
+
+ADD INDEX "xPK_hat_auth" ON "hat_auth" 
+  AREA "Index TX"
+  UNIQUE
+  PRIMARY
+  INDEX-FIELD "auth_obj" ASCENDING 
+
+ADD INDEX "xAK1_hat_auth" ON "hat_auth" 
+  AREA "Index TX"
+  UNIQUE
+  INDEX-FIELD "auth_num" ASCENDING 
+
+ADD INDEX "xIE1_hat_auth" ON "hat_auth" 
+  AREA "Index TX"
+  INDEX-FIELD "auth_episode_obj" ASCENDING 
+
+ADD INDEX "xIE2_hat_auth" ON "hat_auth" 
+  AREA "Index TX"
+  INDEX-FIELD "mem_num" ASCENDING 
+  INDEX-FIELD "dependant" ASCENDING 
+  INDEX-FIELD "start_date" ASCENDING 
+  INDEX-FIELD "end_date" ASCENDING 
+
+.
+PSC
+cpstream=ISO8859-1
+.
+0000016905
