@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<dsMipXmlConfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- ===================================================================== -->
+  <!-- Startup Preferences                                                   -->
+  <!-- ===================================================================== -->
+  <mipstartpreference cName="AdditionalXMLs" cArgument="*" cValue="mip.xml|[AdditionalXMLs]"/>
+
+  <!-- ===================================================================== -->
+  <!-- Param String configuration - Tokens will be resolved in the           -->
+  <!-- mipEnv:ResolvedParam Property                                         -->
+  <!-- ===================================================================== -->
+  
+  <!-- =====================================================================                                 -->
+  <!-- Put these back when you add the DS Application for Training	      				     -->
+  
+  <mipstartpreference cName="StdEnv"    cArgument="*" cValue="MIP|CA|CC|CM|ER|JM|GM|MM|QU|RX|WF|PLT|DS|MA"/>
+  
+  <!-- <mipstartpreference cName="StdEnv"    cArgument="*" cValue="MIP|CA|CC|CM|JM|MM|QU|RX|WF|PLT"/>        -->
+  <!-- <mipstartpreference cName="StdEnv"    cArgument="*" cValue="MIP|CA|CC|CM|ER|JM|GM|MM|QU|RX|WF|PLT"/>  -->
+  <!-- <mipstartpreference cName="StdOasEnv" cArgument="*" cValue="[StdEnv]"/>   			     -->
+  <!-- =====================================================================                                 -->
+
+  <!-- ===================================================================== -->
+  <!-- Standard Intern Application Service Provider.                         -->
+  <!-- ===================================================================== -->
+
+  <mipenvironment cEnvironmentCode="MA">
+	<mipapplications>
+		<mipapplication cApplicationCode="Health" cServerConnectString="[Local]">
+		</mipapplication>
+	</mipapplications>
+  </mipenvironment>
+
+
+</dsMipXmlConfig>
+
+<!-- That's all folks! -->
