@@ -8,4 +8,3 @@
 
 
 /*****Include no longer needed due to the DB table for hat_auth_repeat being removed*****/
-// aaaaaahhhhhh yesssss
