@@ -861,7 +861,17 @@ PROCEDURE WebFormDefinition_Episode :
   Parameters:  <none>
   Notes:       
 ------------------------------------------------------------------------------*/
-  
+  ASSIGN 
+    
+
+    oControl = oContainer:addControl("fcAction"         + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 1 , "Action" )
+    oControl = oContainer:addControl("fcChangeDateTime" + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 2 , "Change Date Time" )
+    oControl = oContainer:addControl("fcChangeUserID"   + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 3 , "Change User ID" )
+    oControl = oContainer:addControl("fcDependant"      + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 4 , "Dependant" )
+    oControl = oContainer:addControl("fcEpisodeNumber"  + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 5 , "Episode Number" )
+    oControl = oContainer:addControl("fcMemberNumber"   + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 6 , "Member Number" )
+    oControl = oContainer:addControl("fcSequence"       + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 7 , "Sequence" )
+  .
 
   { mip/inc/mipcatcherror.i }
   
