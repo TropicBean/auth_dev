@@ -23,7 +23,8 @@ DEFINE VARIABLE glPopupMode             AS LOGICAL            NO-UNDO.
 DEFINE VARIABLE gdAuthObj               AS DECIMAL            NO-UNDO.
 
 DEFINE VARIABLE gclsWob                 AS cls.mipwswob       NO-UNDO.
-                                        
+                 
+// adding a comment here karl                 
 /* Containers */                        
 DEFINE VARIABLE goCntLayout             AS cls.mipwscontainer NO-UNDO.
 DEFINE VARIABLE goCntFilter             AS cls.mipwscontainer NO-UNDO.
@@ -184,38 +185,38 @@ PROCEDURE OutputCustomHeaderJS :
 
     "~n    function fnSuccess()~{           "
     "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"Success!~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"success~", "
-		"~n	                          position: ~"bottom~""
+	"~n	                          notification: ~"Success!~" , "
+	"~n	                          timeout: ~"?~", "
+	"~n	                          type: ~"success~", "
+	"~n	                          position: ~"bottom~""
     "~n                            "
-	  "~n              ~	});       "
+	 "~n              ~	});       "
     "~n    ~}  "
 
     "~n    function fnError()~{           "
     "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"An error has occured!~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"error~", "
-		"~n	                          position: ~"bottom~" "
+	"~n	                          notification: ~"An error has occured!~" , "
+	"~n	                          timeout: ~"?~", "
+	"~n	                          type: ~"error~", "
+	"~n	                          position: ~"bottom~" "
     "~n                            "
-	  "~n              ~	});       "
+    "~n              ~	});       "
     "~n    ~}  "
     "~n    function fnErrorHelp()~{           "
     "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"An error has occured!~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"error~", "
-		"~n	                          position: ~"bottom~", "
+	"~n	                          notification: ~"An error has occured!~" , "
+	"~n	                          timeout: ~"?~", "
+	"~n	                          type: ~"error~", "
+	"~n	                          position: ~"bottom~", "
     "~n                           notificationHelp : ~"[Please refer to 123 for more information]~" "
-	  "~n              ~	});       "
+	"~n              ~	});       "
     "~n    ~}  "
     "~n    function fnInfo()~{           "
     "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"Here is some extra information~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"info~", "
-		"~n	                          position: ~"bottom~""
+    "~n	                          notification: ~"Here is some extra information~" , "
+    "~n	                          timeout: ~"?~", "
+    "~n	                          type: ~"info~", "
+    "~n	                          position: ~"bottom~""
     "~n                             "
 	  "~n              ~	});       "
     "~n    ~}  "
