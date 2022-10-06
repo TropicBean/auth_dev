@@ -19,7 +19,7 @@ IF btt_auth_detail.record_action <> "DELETE":U
 THEN DO:
 
   ASSIGN cError = "":U.
-
+ // ADD comment - hey this is cool  
   /* 
     Get owning entity mnemonic value 
   */
