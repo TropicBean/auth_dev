@@ -5,6 +5,29 @@
   Purpose     : Auth History Wob
   Description : Auth History Wob
   Author      : Karlb
+
+  Notes       :  The default view mode of this wob will be a table view 
+                 To get a form view , pass in a wobMode=FORM to view the history in a form view
+
+                 This wob will also take a parameter "EntityList" . You can 
+                 use this parameter if you only want certain entity history to display.
+                 For example , you only want the auth header history and provider history 
+                 you can pass:
+                    &EntityList=hahau,hahap
+                If the parameter is not specified , the list will default to all entities
+
+                Supported entities are :
+                  - hahau : hah_auth_history
+                  - hahap : hah_auth_provider_history
+                  - hahac : hah_auth_coding_hisotry
+                  - hahad : hah_auth_detail_history
+                  - hahcw : hah_auth_crosswalk_history
+                  - hahcp : hah_auth_copay_history 
+                  - hahal : hah_auth_limit_history
+                  - hahep : hah_auth_episode_history
+                  - hahaf : hah_auth_flag_value_history
+                  - hahmc : hah_auth_mc_savings
+
 ------------------------------------------------------------------------------*/
 BLOCK-LEVEL ON ERROR UNDO, THROW.
 /* This helps ensure proper cleanup */
@@ -13,6 +36,7 @@ CREATE WIDGET-POOL.
 
 { mip/inc/mipdefshared.i }
 { ma/inc/maauthds.i }
+{ ma/inc/maauthtypeds.i } 
 
 /*Variables*/
 DEFINE VARIABLE gcWOBState              AS CHARACTER          NO-UNDO.
@@ -21,16 +45,91 @@ DEFINE VARIABLE gcRowGroupCode          AS CHARACTER          NO-UNDO.
 DEFINE VARIABLE glSuccess               AS LOGICAL            NO-UNDO.
 DEFINE VARIABLE glPopupMode             AS LOGICAL            NO-UNDO.
 DEFINE VARIABLE gdAuthObj               AS DECIMAL            NO-UNDO.
+DEFINE VARIABLE gcEntityList            AS CHARACTER          NO-UNDO.
 
 DEFINE VARIABLE gclsWob                 AS cls.mipwswob       NO-UNDO.
                                         
 /* Containers */                        
 DEFINE VARIABLE goCntLayout             AS cls.mipwscontainer NO-UNDO.
 DEFINE VARIABLE goCntFilter             AS cls.mipwscontainer NO-UNDO.
-DEFINE VARIABLE goCntAuthHist           AS cls.mipwscontainer NO-UNDO.
-DEFINE VARIABLE goCntAuthProvHist       AS cls.mipwscontainer NO-UNDO.
-DEFINE VARIABLE goCntAuthCodingHist     AS cls.mipwscontainer NO-UNDO.
-DEFINE VARIABLE goCntAuthDetailHist     AS cls.mipwscontainer NO-UNDO.
+
+// Container configuration 
+// !Important 
+// If a additional container needs to be added to this wob, make sure to add the configuration to the JSON object below
+DEFINE VARIABLE glcEntityConfiguration AS LONGCHAR NO-UNDO . 
+
+ASSIGN glcEntityConfiguration = '~{ "ttConfiguration": 
+                                    [~{"Entity"             : "hahau",
+                                       "BufferList"         : "tt_auth_history",
+                                       "DefinitionProcedure": "defineContainerAuth",
+                                       "Sequence"           : 1 ~},
+                                    
+                                     ~{"Entity"             : "hahap",
+                                       "BufferList"         : "tt_auth_provider_history",
+                                       "DefinitionProcedure": "defineContainerProvider",
+                                       "Sequence"           : 2 ~},
+                                    
+                                     ~{"Entity"             : "hahac",
+                                       "BufferList"         : "tt_auth_coding_history",
+                                       "DefinitionProcedure": "defineContainerCoding",
+                                       "Sequence"           : 3 ~},
+                                    
+                                     ~{"Entity"             : "hahad",
+                                       "BufferList"         : "tt_auth_detail_history",
+                                       "DefinitionProcedure": "defineContainerDetail",
+                                       "Sequence"           : 4 ~},
+                                    
+                                     ~{"Entity"             : "hahaw",
+                                       "BufferList"         : "tt_auth_crosswalk_history",
+                                       "DefinitionProcedure": "defineContainerCrosswalk",
+                                       "Sequence"           : 5 ~},
+                                    
+                                     ~{"Entity"             : "hahms",
+                                       "BufferList"         : "tt_auth_mc_savings_history",
+                                       "DefinitionProcedure": "defineContainerMcSavings",
+                                       "Sequence"           : 6 ~},
+                                    
+                                     ~{"Entity"             : "hahal",
+                                       "BufferList"         : "tt_auth_limit_history",
+                                       "DefinitionProcedure": "defineContainerLimit",
+                                       "Sequence"           : 7 ~},
+                                    
+                                     ~{"Entity"             : "hahae",
+                                       "BufferList"         : "tt_auth_episode_history",
+                                       "DefinitionProcedure": "defineContainerEpisode",
+                                       "Sequence"           : 8 ~},
+                                    
+                                     ~{"Entity"             : "hahaf",
+                                       "BufferList"         : "tt_auth_flag_value_history",
+                                       "DefinitionProcedure": "defineContainerFlag",
+                                       "Sequence"           : 9 ~},
+                                    
+                                     ~{"Entity"             : "hahcp",
+                                       "BufferList"         : "tt_auth_copay_history",
+                                       "DefinitionProcedure": "defineContainerCopay",
+                                       "Sequence"           : 10 ~}]
+                                    ~}' .
+                              
+DEFINE TEMP-TABLE ttConfiguration NO-UNDO 
+  FIELD Entity              AS CHARACTER
+  FIELD DefinitionProcedure AS CHARACTER
+  FIELD BufferList          AS CHARACTER 
+  FIELD Sequence            AS INTEGER
+  INDEX idx IS UNIQUE Entity
+   
+  INDEX idxSeq Sequence. 
+
+// Read the JSON configuration in to a temp-table
+TEMP-TABLE ttConfiguration:READ-JSON("longchar", glcEntityConfiguration) .
+
+DEFINE TEMP-TABLE ttRegisteredContainer NO-UNDO
+  FIELD Entity              AS CHARACTER
+  FIELD ContainerCode       AS CHARACTER 
+  FIELD ContainerType       AS CHARACTER 
+  FIELD ContainerObject     AS Progress.Lang.Object
+  FIELD ContainerProperties AS Progress.Lang.Object
+  FIELD RenderSequence      AS INTEGER
+  INDEX idx RenderSequence.   
 
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
@@ -143,96 +242,25 @@ PROCEDURE OutputCustomHeaderJS :
     /*
       To expand/collapse the rows in a specific group on the TP detail lines 
     */
-    "~n  function fnExpandCollapseGroups(pControl,pGroupNum)~{                                                                      ":U      
-    "~n    var vGroup          = ~"clGrp~" + pGroupNum,                                                                             ":U  
-    "~n        vGrpSelectArray = document.getElementsByClassName(vGroup);                                                           ":U  
-    "~n                                                                                                                             ":U
-    "~n    if (pControl.checked) ~{                                                                                                 ":U 
-    "~n      wsSetClassName(wsGetParent(pControl,~"TR~"), ~"+clred~");                                                              ":U  
-    "~n      for( var i=0; i<vGrpSelectArray.length; i++ ) ~{                                                                       ":U 
-    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"-clHid~");                                                  ":U 
-    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"+clred~");                                                  ":U 
-    "~n      ~}                                                                                                                     ":U 
-    "~n    ~}                                                                                                                       ":U 
-    "~n    else ~{                                                                                                                  ":U 
-    "~n      wsSetClassName(wsGetParent(pControl,~"TR~"), ~"-clred~");                                                              ":U 
-    "~n      for( var i=0; i<vGrpSelectArray.length; i++ ) ~{                                                                       ":U 
-    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"+clHid~");                                                  ":U 
-    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"-clred~");                                                  ":U 
-    "~n      ~}                                                                                                                     ":U 
-    "~n    ~}                                                                                                                       ":U
-    "~n  ~}                                                                                                                         ":U
-    "~n    function fnWarning()~{           "
-    "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"Warning ~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"warning~", "
-		"~n	                          position: ~"bottom~" "
-    "~n                           "
-	  "~n              ~	});       "
-    "~n    ~}  "
-  
-    "~n    function fnWarningAck()~{           "
-    "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"Warning acknowledge~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"warning~", "
-		"~n	                          position: ~"bottom~", "
-    "~n                           Acknowledge : true  "
-	  "~n              ~	});       "
-    "~n    ~}  "
-
-    "~n    function fnSuccess()~{           "
-    "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"Success!~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"success~", "
-		"~n	                          position: ~"bottom~""
-    "~n                            "
-	  "~n              ~	});       "
-    "~n    ~}  "
-
-    "~n    function fnError()~{           "
-    "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"An error has occured!~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"error~", "
-		"~n	                          position: ~"bottom~" "
-    "~n                            "
-	  "~n              ~	});       "
-    "~n    ~}  "
-    "~n    function fnErrorHelp()~{           "
-    "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"An error has occured!~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"error~", "
-		"~n	                          position: ~"bottom~", "
-    "~n                           notificationHelp : ~"[Please refer to 123 for more information]~" "
-	  "~n              ~	});       "
-    "~n    ~}  "
-    "~n    function fnInfo()~{           "
-    "~n    new wsNotification(~{                                          "
-		"~n	                          notification: ~"Here is some extra information~" , "
-		"~n	                          timeout: ~"?~", "
-		"~n	                          type: ~"info~", "
-		"~n	                          position: ~"bottom~""
-    "~n                             "
-	  "~n              ~	});       "
-    "~n    ~}  "
-
-    
-    
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
-    "~n               "
+    "~n  function fnExpandCollapseGroups(pControl,pGroupNum)~{                        ":U      
+    "~n    var vGroup          = ~"clGrp~" + pGroupNum,                               ":U  
+    "~n        vGrpSelectArray = document.getElementsByClassName(vGroup);             ":U  
+    "~n                                                                               ":U
+    "~n    if (pControl.checked) ~{                                                   ":U 
+    "~n      wsSetClassName(wsGetParent(pControl,~"TR~"), ~"+clred~");                ":U  
+    "~n      for( var i=0; i<vGrpSelectArray.length; i++ ) ~{                         ":U 
+    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"-clHid~");    ":U 
+    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"+clred~");    ":U 
+    "~n      ~}                                                                       ":U 
+    "~n    ~}                                                                         ":U 
+    "~n    else ~{                                                                    ":U 
+    "~n      wsSetClassName(wsGetParent(pControl,~"TR~"), ~"-clred~");                ":U 
+    "~n      for( var i=0; i<vGrpSelectArray.length; i++ ) ~{                         ":U 
+    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"+clHid~");    ":U 
+    "~n        wsSetClassName(wsGetParent(vGrpSelectArray[i],~"TR~"), ~"-clred~");    ":U 
+    "~n      ~}                                                                       ":U 
+    "~n    ~}                                                                         ":U
+    "~n  ~}                                                                           ":U
               
     /*
       This function will handle filtering rows by the filter criteria specified in a container title search input.
@@ -278,13 +306,96 @@ PROCEDURE RetrieveData :
   DEFINE VARIABLE cSearchMethod  AS CHARACTER                   NO-UNDO.
   DEFINE VARIABLE cGroupCode     AS CHARACTER                   NO-UNDO.
   DEFINE VARIABLE hBuffer        AS HANDLE                      NO-UNDO.  
-  DEFINE VARIABLE oAuthSearch  AS cls.maauthsearch   NO-UNDO.
-
+  DEFINE VARIABLE oAuthSearch    AS cls.maauthsearch            NO-UNDO.
+  DEFINE VARIABLE oControl       AS cls.mipwscontrol            NO-UNDO.
+  
+  DEFINE VARIABLE hQuery       AS HANDLE      NO-UNDO.
+  DEFINE VARIABLE cBuffer      AS CHARACTER   NO-UNDO.
+  DEFINE VARIABLE cField       AS CHARACTER   NO-UNDO.
+  DEFINE VARIABLE cQueryString AS CHARACTER   NO-UNDO.
+  DEFINE VARIABLE iValue       AS INTEGER     NO-UNDO.
+  
+  DEFINE VARIABLE lMultiRange         AS LOGICAL   NO-UNDO.
+  DEFINE VARIABLE iCount              AS INTEGER   NO-UNDO.  
+  DEFINE VARIABLE cUser               AS CHARACTER NO-UNDO.
+  DEFINE VARIABLE dDateFrom           AS DATETIME  NO-UNDO.
+  DEFINE VARIABLE dDateTo             AS DATETIME  NO-UNDO.
+  DEFINE VARIABLE cHistBufferList     AS CHARACTER NO-UNDO INITIAL "tt_auth_history,tt_auth_provider_history,tt_auth_coding_history,tt_auth_detail_history":U.
+  
   ASSIGN 
+    cUser       =          goCntFilter:getControl("fcFilterUserCode":U):ControlValue  
+    dDateFrom   = DATETIME(goCntFilter:getControl("fdFilterFromDate":U):ControlValue)
+    dDateTo     = DATETIME(goCntFilter:getControl("fdFilterToDate":U):ControlValue)
+                                                      
     oAuthSearch = NEW cls.maauthsearch(DATASET dsAuthorisation BY-REFERENCE) 
-    lSuccess    = oAuthSearch:setfilterCriteria("tt_auth.auth_obj" , "=" , gdAuthObj)
-    lSuccess    = oAuthSearch:fetchData().
+    lSuccess    = oAuthSearch:setfilterCriteria("tt_auth.auth_obj" , "=" , gdAuthObj).
 
+  ASSIGN lSuccess    = oAuthSearch:fetchData().
+  
+  IF cUser     <> "":U
+  OR dDateFrom <> ?
+  OR dDateTo   <> ? THEN 
+  DO:
+    BUFFER-BLK:
+    DO iCount = 1 TO NUM-ENTRIES(cHistBufferList):
+      ASSIGN cBuffer      = ENTRY(iCount , cHistBufferList)
+             lMultiRange  = dDateFrom <> ? AND dDateTo   <> ?  
+             // This query string is... juicy ... but it works
+             cQueryString = "FOR EACH " + cBuffer 
+                          + "   WHERE TRUE "  
+                          + (IF lMultiRange THEN " AND ":U 
+                                            ELSE "":U)
+                          + (IF cUser      <> "":U THEN "AND " + cBuffer + ".change_usr_id     <> " + QUOTER(cUser)     ELSE "":U ) + " ":U
+                          + (IF lMultiRange THEN "(":U 
+                                            ELSE "":U)
+                          + (IF dDateFrom  <> ?    THEN (IF lMultiRange THEN "" ELSE "AND " ) + cBuffer + ".change_date_time   < " + QUOTER(STRING(dDateFrom)) ELSE "") + " ":U
+                          + (IF lMultiRange THEN " OR ":U 
+                                            ELSE "":U ) 
+                          + (IF dDateTo    <> ?    THEN (IF lMultiRange THEN "" ELSE "AND " ) +  cBuffer + ".change_date_time   > " + QUOTER(STRING(dDateTo)  ) ELSE "") + " ":U
+                          + (IF lMultiRange THEN ")":U 
+                                            ELSE "":U) .
+            
+
+      CREATE BUFFER hBuffer FOR TABLE cBuffer.
+      CREATE QUERY hQuery.
+    
+      hQuery:ADD-BUFFER(hBuffer).
+      hQuery:QUERY-PREPARE(cQueryString).
+      hQuery:QUERY-OPEN().
+      hQuery:GET-FIRST().
+      QUERY-BLK:
+      REPEAT:
+          
+        IF hQuery:QUERY-OFF-END THEN LEAVE QUERY-BLK.
+
+        DO TRANSACTION:
+            hQuery:GET-CURRENT(EXCLUSIVE-LOCK).
+            hBuffer:BUFFER-DELETE().
+        END. //DO TRANSACTION
+        
+        hQuery:QUERY-OPEN().
+          
+        hQuery:GET-NEXT().
+      END. //QUERY-BLK
+      
+      hQuery:QUERY-CLOSE().
+      
+      DELETE OBJECT hQuery.
+      DELETE OBJECT hBuffer.
+    END. //BUFFER-BLK
+  END. //IF cUser <> "":U ...
+
+  DEFINE VARIABLE oAuthTypeSearch  AS cls.maauthtypesearch NO-UNDO.
+
+  ASSIGN oAuthTypeSearch = NEW cls.maauthtypesearch(DATASET dsAuthType BY-REFERENCE)
+         lSuccess        = oAuthTypeSearch:setCriteria("Bufferlist":U, "tt_auth_type":U).
+  
+  FOR EACH tt_auth_history:
+    ASSIGN  lSuccess  = oAuthTypeSearch:setFilterCriteria("tt_auth_type.auth_type_obj":U, "=":U, tt_auth_history.auth_type_obj) .
+  END. // FOR EACH tt_auth_history.
+ 
+  oAuthTypeSearch:fetchData().
+  
   {mip/inc/mipcatcherror.i}
 END PROCEDURE.
 
@@ -302,7 +413,7 @@ PROCEDURE WebAcceptRequest :
   Parameters: <none>
   Notes     :
 ------------------------------------------------------------------------------*/
-  
+  DEFINE VARIABLE iEntity AS INTEGER NO-UNDO.
   
   IF Warpspeed:CurrentObj = ?
   THEN ASSIGN Warpspeed:CurrentObj = '':U .
@@ -314,9 +425,17 @@ PROCEDURE WebAcceptRequest :
     
     glPopupMode         = get-value("popupMode":U) = "true":U
     
-    gclsWob:Mode        = "Enquiry":U.  
-  
-    
+    gclsWob:Mode        = "Enquiry":U
+
+   //The default view mode of this wob will be a table view 
+    //To get a form view , pass in a wobMode=FORM to view the history in a form view
+    gclsWob:Mode        = IF get-value("wobMode") = "":U 
+                          THEN "TABLE":U
+                          ELSE  get-value("wobMode") 
+    gcEntityList        = IF get-value("EntityList") = "":U 
+                          THEN "hahau" // "hahau,hahap,hahac,hahad,hahcw,hahcp,hahal,hahep":U 
+                          ELSE get-value("EntityList").
+
   IF gclsWob:SubmitValue = "Close":U
   THEN 
     RETURN "[Redirect]-":U + Warpspeed:CallingWob + "-":U + STRING(Warpspeed:CurrentObj).
@@ -342,34 +461,9 @@ END PROCEDURE.
 &ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE WebBusinessLogic Procedure 
 PROCEDURE WebBusinessLogic :
 /*------------------------------------------------------------------------------
-  Purpose: This procedure should contain all business logic and DB updates, but
-           in the ideal implementation they would be in the App's Libraries.
+  Purpose: Nothing to do here since this is a view-only wob
 ------------------------------------------------------------------------------*/
-  DEFINE VARIABLE lSuccess   AS LOGICAL    NO-UNDO.
-  DEFINE VARIABLE cWhatToDo  AS CHARACTER  NO-UNDO.
-  
-  
-  CASE gclsWob:Mode:
- /* -------------------------------------------------------------------------
-       Business Logic for "Search" State
-    ------------------------------------------------------------------------- */
-    WHEN "Search":U THEN
-    DO:
-      
-    END. /* WHEN "Search" */
-    /* -- END Business Logic for "Search" State ----------------------------- */
-
-    /* -------------------------------------------------------------------------
-       Business Logic for "Maint" State
-    ------------------------------------------------------------------------- */
-    WHEN "Maint":U THEN
-    DO:
-      
-    END. /* WHEN "Maint" */
-    /* -- END Business Logic for "Maint" State ------------------------------ */
-
-  END CASE. /* CASE gclsWob:Mode */                       
-  
+                      
   { mip/inc/mipcatcherror.i }    
   
 END PROCEDURE.
@@ -392,89 +486,72 @@ PROCEDURE WebCreateResponse :
   DEFINE VARIABLE oControl      AS cls.mipwscontrol   NO-UNDO.
   DEFINE VARIABLE oSubContainer AS cls.mipwscontainer NO-UNDO.
   DEFINE VARIABLE oAppObject    AS cls.mipappobject   NO-UNDO.
-                                              
-  RUN RetrieveData IN TARGET-PROCEDURE.
   
-  CASE gclsWob:Mode:
-    /* -------------------------------------------------------------------------
-       Preparations for "Search" State
-    ------------------------------------------------------------------------- */
-    WHEN "Search":U THEN
-    DO:            
-      
-    END. /* WHEN "Search" */
-    /* -- END Preparations for "Search" State ------------------------------- */
+  DEFINE VARIABLE hBuffer       AS HANDLE             NO-UNDO.  
+  DEFINE VARIABLE cBufferName   AS CHARACTER          NO-UNDO.
+  DEFINE VARIABLE iBuffer       AS INTEGER            NO-UNDO.  
+  DEFINE VARIABLE oContainer    AS cls.mipwscontainer NO-UNDO.
+  
+  RUN RetrieveData IN TARGET-PROCEDURE.
 
-    /* -------------------------------------------------------------------------
-       Preparations for "Maint" State
-    ------------------------------------------------------------------------- */
-    WHEN "Maint":U THEN
-    DO:
+  ATTACH-BUFFER-LIST-BLK:
+  FOR EACH ttRegisteredContainer : 
+
+    FIND FIRST ttConfiguration 
+         WHERE ttConfiguration.Entity = ttRegisteredContainer.Entity .
     
-    END. /*WHEN "Maint":U THEN*/        
-    
-    WHEN "Enquiry":U THEN
+    ASSIGN oContainer = ttRegisteredContainer.ContainerObject .
+
+    ATTACH-BUFFER-BLK:
+    DO iBuffer = 1 TO NUM-ENTRIES(ttConfiguration.BufferList) :
+      
+      ASSIGN cBufferName = ENTRY(iBuffer, ttConfiguration.BufferList).
+
+      CREATE BUFFER hBuffer FOR TABLE cBufferName . 
+
+      ASSIGN oContainer:QueryBufferList = oContainer:QueryBufferList 
+                                        + IF(oContainer:QueryBufferList <> "":U) THEN ",":U ELSE "":U
+                                        + STRING(hBuffer:DEFAULT-BUFFER-HANDLE).
+
+
+
+    END. //ATTACH-BUFFER-BLK:
+
+    //Once all the buffers are attached, we can populate
+    oContainer:PopulateFromQuery().
+
+  END. // ATTACH-BUFFER-BLK
+
+  ASSIGN oControl = goCntFilter:getControl("frmButtonBar":U):SubContainer:getControl("btnBack":U).
+      
+  /*
+    If this wob was not run as popup then we will need to five the option to return
+    to the calling wob.
+  */
+  IF Warpspeed:CallingWob <> "":U AND Warpspeed:CallingWob <> gclsWob:ObjectCode THEN 
+  DO:
+    ASSIGN 
+       oAppObject = NEW cls.mipappobject()
+       lSuccess   = oAppObject:miFocusAppObject(Warpspeed:CallingWob).
+       
+    IF glPopupMode THEN
     DO:
-      ASSIGN oControl = goCntFilter:getControl("frmButtonBar":U):SubContainer:getControl("btnBack":U).
-      
-      /*
-        If this wob was not run as popup then we will need to five the option to return
-        to the calling wob.
-      */
-      IF Warpspeed:CallingWob <> "":U AND Warpspeed:CallingWob <> gclsWob:ObjectCode THEN 
-      DO:
-        ASSIGN 
-           oAppObject = NEW cls.mipappobject()
-           lSuccess   = oAppObject:miFocusAppObject(Warpspeed:CallingWob).
-           
-        IF glPopupMode THEN
-        DO:
-          ASSIGN 
-             oControl:ControlSubType    = "Button":U
-             oControl:ButtonLabel       = "Close":U
-             oControl:JavascriptOnClick = "window.opener.document.getElementById(~"divdlg~").style.display = ~"none~";window.close();":U.
-        END. /*IF glPopupMode THEN*/
-        ELSE
-        DO:
-          ASSIGN 
-             oControl:ButtonLabel = "Return ":U 
-                                  + (IF oAppObject:ObjectInFocus THEN " To ":U + oAppObject:ObjectDescription ELSE "":U)
-                                  
-             oControl:Wob         = Warpspeed:CallingWob.   
-        END. /*ELSE*/                   
-      END. /*IF Warpspeed:CallingWob <> "":U AND Warpspeed:CallingWob <> gclsWob:ObjectCode THEN */
-      ELSE
-        ASSIGN oControl:ControlToken = "Hidden":U.                               
-      
-      oSubContainer = goCntFilter:getControl("frmButtonBar":U):SubContainer.
-      
-      
-      DO iControl = 1 TO NUM-ENTRIES(oSubContainer:getControlNameList()):
-      
-        ASSIGN 
-           oControl            = oSubContainer:getControl(ENTRY(iControl, oSubContainer:getControlNameList()))
-           oControl:AssignList = oControl:AssignList 
-                               + "&popupMode=":U + get-value("popupMode":U). 
-        
-      END. /*DO iControl = 1 TO NUM-ENTRIES()*/
-
-      ASSIGN goCntAuthHist:QueryBufferList       = STRING(TEMP-TABLE tt_auth_history:DEFAULT-BUFFER-HANDLE) 
-             lSuccess                            = goCntAuthHist:PopulateFromQuery() 
-             
-             goCntAuthProvHist:QueryBufferList   = STRING(TEMP-TABLE tt_auth_provider_history:DEFAULT-BUFFER-HANDLE) 
-             lSuccess                            = goCntAuthProvHist:PopulateFromQuery() 
-             
-             goCntAuthCodingHist:QueryBufferList = STRING(TEMP-TABLE tt_auth_coding_history:DEFAULT-BUFFER-HANDLE) 
-             lSuccess                            = goCntAuthCodingHist:PopulateFromQuery() 
-             
-             goCntAuthDetailHist:QueryBufferList = STRING(TEMP-TABLE tt_auth_detail_history:DEFAULT-BUFFER-HANDLE) 
-             lSuccess                            = goCntAuthDetailHist:PopulateFromQuery() 
-
-             .
-      
-
-    END. /*WHEN "Enquiry":U THEN*/
-  END CASE. /* gclsWob:Mode */
+      ASSIGN 
+         oControl:ControlSubType    = "Button":U
+         oControl:ButtonLabel       = "Close":U
+         oControl:JavascriptOnClick = "window.opener.document.getElementById(~"divdlg~").style.display = ~"none~";window.close();":U.
+    END. /*IF glPopupMode THEN*/
+    ELSE
+    DO:
+      ASSIGN 
+         oControl:ButtonLabel = "Return ":U 
+                              + (IF oAppObject:ObjectInFocus THEN " To ":U + oAppObject:ObjectDescription ELSE "":U)
+                              
+         oControl:Wob         = Warpspeed:CallingWob.   
+    END. /*ELSE*/                   
+  END. /*IF Warpspeed:CallingWob <> "":U AND Warpspeed:CallingWob <> gclsWob:ObjectCode THEN */
+  ELSE
+    ASSIGN oControl:ControlToken = "Hidden":U. 
 
   { mip/inc/mipcatcherror.i 
     &FINALLY="IF VALID-OBJECT(oAppObject) THEN DELETE OBJECT oAppObject."}
@@ -550,34 +627,72 @@ END PROCEDURE.
 &ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE WebFormDefinition Procedure 
 PROCEDURE WebFormDefinition :
 /*------------------------------------------------------------------------------
-  Purpose:     
+  Purpose: This procedure will only define the containers that are defined in the
+           gcEntityList global variable. 
+           
   Parameters:  <none>
-  Notes:       
+  Notes:  The definition procedure for the entity code will be routed via the 
+          configuration stored in gcEntityProcedureList
+
+          Container types will be determined by the wob mode. Default will be TABLE
+          for Search mode 
 ------------------------------------------------------------------------------*/
+  DEFINE VARIABLE iEntity               AS INTEGER                   NO-UNDO .
+  DEFINE VARIABLE cContainerType        AS CHARACTER                 NO-UNDO .
+  DEFINE VARIABLE cEntity               AS INTEGER                   NO-UNDO .
+  DEFINE VARIABLE oContainer            AS cls.mipwscontainer        NO-UNDO .
+  DEFINE VARIABLE oContainerProperties  AS cls.wscontainerproperties NO-UNDO .
+
+  wsUiService:getLayoutInstance(INPUT "WobLayout":U, INPUT "wsMainNoMenu":U, OUTPUT goCntLayout). //wsMainNoMenu
   
-       
-  wsUiService:getLayoutInstance(INPUT "WobLayout":U, INPUT "wsMain":U, OUTPUT goCntLayout). //wsMainNoMenu
-                 
-  RUN WebFormDefinition_Filter    IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Auth      IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Provider  IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Coding    IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Detail    IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_MCSavings IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Crosswalk IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Copay     IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Limit     IN TARGET-PROCEDURE.
-  RUN WebFormDefinition_Episode   IN TARGET-PROCEDURE.
+  // Filter is for search mode only
+  IF gclsWob:Mode = "Search":U 
+  THEN 
+    RUN WebFormDefinition_Filter  IN TARGET-PROCEDURE.
+    
+  ASSIGN cContainerType = IF gclsWob:Mode = "Search":U THEN "TABLE":U ELSE "FORM":U .
+
+  ENTITY-DEFINE-BLK:
+  DO iEntity = 1 TO NUM-ENTRIES(gcEntityList):
+
+    ASSIGN cEntity        = ENTRY(iEntity , gcEntityList) .
+
+    FIND FIRST ttConfiguration 
+         WHERE ttConfiguration.Entity = cEntity NO-ERROR. 
+
+    IF NOT AVAILABLE ttConfiguration
+    THEN 
+      {mip/inc/mipthrowerror.i 'AuthHistory_EntityWebFormDefinition':U 1 "'Unable to determine the configuration for entity &1'" ? QUOTER(cEntity)}
 
 
-                              
+    RUN VALUE(ttConfiguration.DefinitionProcedure ) IN TARGET-PROCEDURE( INPUT  cContainerType ,
+                                                                         OUTPUT oContainer,
+                                                                         OUTPUT oContainerProperties) NO-ERROR .
+
+    IF cls.miperror:getMessageGroupNumber() = "PROGRESS:6456":U 
+    THEN 
+      {mip/inc/mipthrowerror.i 'AuthHistory_EntityWebFormDefinition':U 1 "'Unable to locate procedure &1 in the program mahahauwob.w'" ? QUOTER(ttConfiguration.DefinitionProcedure )}
+     
+    IF VALID-OBJECT(oContainer) THEN
+    DO: 
+      CREATE ttRegisteredContainer.
+  
+      ASSIGN ttRegisteredContainer.Entity              = cEntity 
+             ttRegisteredContainer.ContainerCode       = oContainer:ContainerCode
+             ttRegisteredContainer.ContainerType       = oContainerProperties
+             ttRegisteredContainer.ContainerObject     = oContainer
+             ttRegisteredContainer.ContainerProperties = oContainerProperties
+             ttRegisteredContainer.RenderSequence      = ttConfiguration.Sequence .
+
+    END. // IF VALID-OBJECT(oContainer)
+  END. // ENTITY-BLK                            
   
   { mip/inc/mipcatcherror.i }
   
 END PROCEDURE.
 
 /* _UIB-CODE-BLOCK-END */
-&ANALYZE-RESUME
+&ANALYZE-RESUMEdaaa
 
 &ENDIF
 
@@ -587,39 +702,59 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_Auth :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
 ------------------------------------------------------------------------------*/
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
+
   DEFINE VARIABLE oControl        AS cls.mipwscontrol NO-UNDO.
   DEFINE VARIABLE lSuccess        AS LOGICAL          NO-UNDO.
   DEFINE VARIABLE iControl        AS INTEGER          NO-UNDO.
   DEFINE VARIABLE cContainerCode  AS CHARACTER        NO-UNDO.
   
-  ASSIGN 
-    cContainerCode                      = "AuthHist":U
-    goCntAuthHist                       = NEW cls.mipwscontainer(cContainerCode, "100%":U, "":U, WarpSpeed:BaseClass, TRUE)
-    goCntAuthHist:ContainerTitle        = "Authorisation History":U
-    goCntAuthHist:ViewOnly              = FALSE
-    goCntAuthHist:ShowContainerSettings = FALSE
-    goCntAuthHist:Collapsable           = FALSE
-    goCntAuthHist:RowsToRender          = ?
-    goCntAuthHist:ContainerMode         = Warpspeed:SubmitValue
-    goCntAuthHist:QueryString           = "FOR EACH tt_auth_history NO-LOCK":U
-                                   //  + "   WHERE tt_auth_history.auth_obj = '&1',":U
-  
-    oControl                            = goCntAuthHist:addControl("fc_action":U           + cContainerCode , "wsInput":U    , "10":U, "tt_auth_history.action":U                   , "CHARACTER":U, 1, "Action":U                  )   
-    oControl                            = goCntAuthHist:addControl("fc_change_date_time":U + cContainerCode , "wsInput":U    , "10":U, "tt_auth_history.change_date_time":U         , "DATETIME":U , 2, "Change Date Time":U        )        
-    oControl                            = goCntAuthHist:addControl("fc_change_usr_id":U    + cContainerCode , "wsInput":U    , "10":U, "tt_auth_history.change_usr_id":U            , "CHARACTER":U, 3, "Change User Id":U          )                                                                  
-    oControl                            = goCntAuthHist:addControl("fcAuthTypeCode":U      + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.auth_type_obj":U            , "CHARACTER":U, 6, "Auth Type":U               )    
-    oControl                            = goCntAuthHist:addControl("fdStartDate":U         + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.start_date":U               , "DATE":U     , 7, "Authorisation Start Date":U)
-    oControl                            = goCntAuthHist:addControl("fdEndDate":U           + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.end_date":U                 , "DATE":U     , 8, "Authorisation End Date":U  )     
-    oControl                            = goCntAuthHist:addControl("fiClaimCode":U         + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.claim_code":U               , "INTEGER":U  , 9, "Claim Code":U              )
-    oControl                            = goCntAuthHist:addControl("cbClaimType":U         + cContainerCode, "wsInput":U     , "3":U , "tt_auth_history.claim_type":U               , "CHARACTER":U, 10, "Claim Type":U             )      
-    oControl:AdditionalItems            = "=|C=C|N=N|A=A|K=K|P=P|O=O":U  
-    oControl                            = goCntAuthHist:addControl("cbStatusDisp":U        + cContainerCode, "wsCombo":U     , "15":U, "tt_auth_history.auth_status":U              , "INTEGER":U  , 11, "Authorisation Status":U   )
-    oControl                            = goCntAuthHist:addControl("fcReason":U            + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.auth_status_note":U         , "CHARACTER":U, 12, "Status Reason":U          ) 
-    oControl                            = goCntAuthHist:addControl("fcAction":U            + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.record_action":U            , "CHARACTER":U, 13, "Action":U                 ) .            
+  CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+      ASSIGN 
+      cContainerCode                     = "AuthHist":U
+      opoContainer                       = NEW cls.mipwscontainer(cContainerCode, "99%":U, "":U, WarpSpeed:BaseClass, TRUE)
+      opoContainer:ContainerTitle        = "Authorisation History":U
+      opoContainer:ViewOnly              = FALSE
+      opoContainer:ShowContainerSettings = FALSE
+      opoContainer:Collapsable           = FALSE
+      opoContainer:RowsToRender          = ?
+      opoContainer:ContainerMode         = Warpspeed:SubmitValue
+      opoContainer:QueryString           = "FOR EACH tt_auth_history NO-LOCK":U
+                                     //  + "   WHERE tt_auth_history.auth_obj = '&1',":U
     
+      oControl                            = opoContainer:addControl("fc_action":U           + cContainerCode , "wsInput":U    , "10":U, "tt_auth_history.action":U                   , "CHARACTER":U, 1, "Action":U                  )   
+      oControl                            = opoContainer:addControl("fc_change_date_time":U + cContainerCode , "wsInput":U    , "10":U, "tt_auth_history.change_date_time":U         , "DATETIME":U , 2, "Change Date Time":U        )        
+      oControl                            = opoContainer:addControl("fc_change_usr_id":U    + cContainerCode , "wsInput":U    , "10":U, "tt_auth_history.change_usr_id":U            , "CHARACTER":U, 3, "Change User Id":U          )                                                                  
+      oControl                            = opoContainer:addControl("fcAuthTypeCode":U      + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.auth_type_obj":U            , "CHARACTER":U, 6, "Auth Type":U               )    
+      oControl:RenderProcedure            = "WebRenderProcedure":U
+      oControl:RenderArgument             = "AuthType":U
+      oControl                            = opoContainer:addControl("fdStartDate":U         + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.start_date":U               , "DATE":U     , 7, "Authorisation Start Date":U)
+      oControl                            = opoContainer:addControl("fdEndDate":U           + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.end_date":U                 , "DATE":U     , 8, "Authorisation End Date":U  )     
+      oControl                            = opoContainer:addControl("fiClaimCode":U         + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.claim_code":U               , "INTEGER":U  , 9, "Claim Code":U              )
+      oControl                            = opoContainer:addControl("cbClaimType":U         + cContainerCode, "wsInput":U     , "3":U , "tt_auth_history.claim_type":U               , "CHARACTER":U, 10, "Claim Type":U             )      
+      oControl:AdditionalItems            = "=|C=C|N=N|A=A|K=K|P=P|O=O":U  
+      oControl                            = opoContainer:addControl("cbStatusDisp":U        + cContainerCode, "wsCombo":U     , "15":U, "tt_auth_history.auth_status":U              , "INTEGER":U  , 11, "Authorisation Status":U   )
+      oControl:RenderProcedureHandle      = mipEnv:Health:maUIService:RenderProcedureHandle                                                                                                
+      oControl:RenderProcedure            = "RenderProcedure":U                                                                                                                            
+      oControl:RenderArgument             = "FullSystemStatusCombo":U  
+      oControl                            = opoContainer:addControl("fcReason":U            + cContainerCode, "wsInput":U     , "15":U, "tt_auth_history.auth_status_note":U         , "CHARACTER":U, 12, "Status Reason":U          ) .            
+    
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
+
   { mip/inc/mipcatcherror.i }
   
 END PROCEDURE.
@@ -629,71 +764,105 @@ END PROCEDURE.
 
 &ENDIF
 
-&IF DEFINED(EXCLUDE-WebFormDefinition_Coding) = 0 &THEN
+&IF DEFINED(EXCLUDE-WebFormDefinition_Provider) = 0 &THEN
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE WebFormDefinition_Coding Procedure 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE WebFormDefinition_Provider Procedure 
 PROCEDURE WebFormDefinition_Provider :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
 ------------------------------------------------------------------------------*/
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
+
   DEFINE VARIABLE oControl       AS cls.mipwscontrol NO-UNDO.
   DEFINE VARIABLE lSuccess       AS LOGICAL          NO-UNDO.
   DEFINE VARIABLE iControl       AS INTEGER          NO-UNDO.
   DEFINE VARIABLE cContainerCode AS CHARACTER        NO-UNDO.
+  DEFINE VARIABLE oContainerProperties AS cls.wscontainerproperties NO-UNDO.
  
-  ASSIGN 
-    cContainerCode                             = "AuthProvHist":U
-    goCntAuthProvHist                          = NEW cls.mipwscontainer(cContainerCode, "99%":U, "":U, WarpSpeed:BaseClass, TRUE)
-    goCntAuthProvHist:ContainerTitle           = "Provider History":U
-    goCntAuthProvHist:RowsToRender             = ?
-    goCntAuthProvHist:ViewOnly                 = FALSE
-    goCntAuthProvHist:ShowContainerSettings    = FALSE
-    goCntAuthProvHist:Collapsable              = TRUE
-    goCntAuthProvHist:ContainerMode            = Warpspeed:SubmitValue
-    goCntAuthProvHist:QueryString              = "FOR EACH tt_auth_provider_history NO-LOCK ":U
-                                               + "BY tt_auth_provider_history.auth_provider_obj"
-  
-    oControl                              = goCntAuthProvHist:addControl("fc_action":U                         + cContainerCode , "wsInput":U      , "10":U , "tt_auth_provider_history.action":U                 , "CHARACTER":U, 1 , "Action":U                )   
-    oControl                              = goCntAuthProvHist:addControl("fc_change_date_time":U               + cContainerCode , "wsInput":U      , "10":U , "tt_auth_provider_history.change_date_time":U       , "DATETIME":U , 2 , "Change Date Time":U      )        
-    oControl                              = goCntAuthProvHist:addControl("fc_change_usr_id":U                  + cContainerCode , "wsInput":U      , "10":U , "tt_auth_provider_history.change_usr_id":U          , "CHARACTER":U, 3 , "Change User Id":U        )  
-    oControl                              = goCntAuthProvHist:addControl("cbSequence":U                        + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.provider_sequence":U      , "CHARACTER":U, 4,  "Seq":U)                                                                                                                    
-    oControl                              = goCntAuthProvHist:addControl("flAuthorised":U                      + cContainerCode, "wsCheckBox":U    , "20":U , "tt_auth_provider_history.authorised_service":U     , "LOGICAL":U ,  6,  "A/S":U)                                                                                                                                        
-    oControl                              = goCntAuthProvHist:addControl("cbProviderType":U                    + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.provider_type":U          , "CHARACTER":U, 7,  "Provider Type":U)                                                                                                                        
-    oControl                              = goCntAuthProvHist:addControl("fiProviderNum":U                     + cContainerCode, "wsInput":U       , "8":U  , "tt_auth_provider_history.doc_num":U                , "CHARACTER":U, 8,  "Provider Number":U)
-    oControl                              = goCntAuthProvHist:addControl("fdAuthGroupObj":U                    + cContainerCode, "wsCombo":U       , "10":U , "tt_auth_provider_history.auth_group_obj":U         , "CHARACTER":U, 10, "Auth Group":U)                                                                                                                                                                                                   
-    oControl                              = goCntAuthProvHist:addControl("fiDiscipline":U                      + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.pr_type":U                , "CHARACTER":U, 11, "Disc":U)
-    oControl                              = goCntAuthProvHist:addControl("fiSubDiscipline":U                   + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.sub_pr_type":U            , "CHARACTER":U, 12, "Sub-Dis":U)                                     
-    oControl                              = goCntAuthProvHist:addControl("fcProviderBaseRate":U                + cContainerCode, "wsInput":U       , "18":U , "tt_auth_provider_history.default_base_rate":U      , "CHARACTER":U, 13, "Default<br>Base<br>Rate":U)
-    oControl                              = goCntAuthProvHist:addControl("fcProviderArsRate":U                 + cContainerCode, "wsInput":U       , "18":U , "tt_auth_provider_history.default_ars_rate":U       , "CHARACTER":U, 14, "Default<br>Ars<br>Rate":U)
-    oControl                              = goCntAuthProvHist:addControl("cbOverrideBaseRate":U                + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.override_base_rate":U     , "CHARACTER":U, 15, "Override<br>Base<br>Rate":U)
-    oControl                              = goCntAuthProvHist:addControl("cbOverrideArsRate":U                 + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.override_ars_rate":U      , "CHARACTER":U, 16, "Override<br>Ars<br>Rate":U)                                                                                               
-    oControl                              = goCntAuthProvHist:addControl("flMainProvider":U                    + cContainerCode, "wsCheckBox":U    , "18":U , "tt_auth_provider_history.main_provider":U          , "LOGICAL":U  , 17, "Main":U)
-    oControl                              = goCntAuthProvHist:addControl("flAuthoriseAllServices":U            + cContainerCode, "wsCheckBox":U    , "18":U , "tt_auth_provider_history.authorise_all_services":U , "LOGICAL":U  , 19, "Authorise<br>All<br>Services":U)
-    oControl                              = goCntAuthProvHist:addControl("fiAttProviderNum":U                  + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.group_doc_num":U          , "CHARACTER":U, 20, "Associated Provider":U)
-    oControl                              = goCntAuthProvHist:addControl("fdStartDate":U                       + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.start_date":U             , "DATE":U     , 24, "":U)
-    oControl                              = goCntAuthProvHist:addControl("cbStartAmPm":U                       + cContainerCode, "wsCombo":U       , "3":U  , "tt_auth_provider_history.start_ampm":U             , "LOGICAL":U  , 24, "Start Date":U)
-    oControl:AdditionalItems              = "AM=AM|PM=PM":U                                                                                                               
-    oControl:CellLayoutMask               = "&1 &2":U    
-    oControl                              = goCntAuthProvHist:addControl("fdEndDate":U                         + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.end_date":U               , "DATE":U     , 25, "End Date":U)
-    oControl                              = goCntAuthProvHist:addControl("cbEndAmPm":U                         + cContainerCode, "wsCombo":U       , "3":U  , "tt_auth_provider_history.end_ampm":U               , "LOGICAL":U  , 25, "End Date":U)
-    oControl:AdditionalItems              = "AM=AM|PM=PM":U                                                                                                               
-    oControl:CellLayoutMask               = "&1 &2":U    
-    oControl                              = goCntAuthProvHist:addControl("fiClaimCode":U                       + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.claim_code":U             , "INTEGER":U  , 26, "Claim<br>Code":U)
-    oControl                              = goCntAuthProvHist:addControl("cbClaimType":U                       + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.claim_type":U             , "CHARACTER":U, 27, "Claim<br>Type":U)                                                                       
-    oControl                              = goCntAuthProvHist:addControl("cbStatus":U                          + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.auth_status":U            , "INTEGER":U  , 28, "Auth Status":U)
-    oControl                              = goCntAuthProvHist:addControl("fcReason":U                          + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.auth_status_note":U       , "CHARACTER":U, 29, "Status<br>Reason":U)
-    oControl                              = goCntAuthProvHist:addControl("fcCopayOverrideNote":U               + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.copay_override_note":U    , "INTEGER":U  , 30, "Co-payment<br>Override<br> Reason":U)   
-    oControl                              = goCntAuthProvHist:addControl("fcAccountReference":U                + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.account_reference":U      , "CHARACTER":U, 33, "Account<br>Reference":U)
-    oControl                              = goCntAuthProvHist:addControl("fdQuantityAuth":U                    + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.quantity_auth":U          , "DECIMAL":U  , 34, "Quantity<br>Auth":U)
-    oControl                              = goCntAuthProvHist:addControl("fdAmountAuth":U                      + cContainerCode, "wsInput":U       , "12":U , "tt_auth_provider_history.amount_auth":U            , "DECIMAL":U  , 35, "Amount<br>Auth":U)
-    oControl                              = goCntAuthProvHist:addControl("fdAmountReq":U                       + cContainerCode, "wsInput":U       , "12":U , "tt_auth_provider_history.amount_requested":U       , "DECIMAL":U  , 36, "Amount<br>Request":U)
-    oControl                              = goCntAuthProvHist:addControl("fdQtyReq":U                          + cContainerCode, "wsInput":U       , "12":U , "tt_auth_provider_history.quantity_requested":U     , "DECIMAL":U  , 37, "Qty<br>Request":U)
-    oControl                              = goCntAuthProvHist:addControl("flPmbIndicator":U                    + cContainerCode, "wsCheckBox":U    , "12":U , "tt_auth_provider_history.pmb_indicator":U          , "LOGICAL":U  , 40, "PMB<br>Indicator":U)
-    oControl                              = goCntAuthProvHist:addControl("flLosCalculation":U                  + cContainerCode, "wsCheckBox":U    , "12":U , "tt_auth_provider_history.los_calculation":U        , "LOGICAL":U  , 41, "System<br>LOS<br>Calculation":U)
-                                                                                                                                   
-    .          
+  CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+      ASSIGN 
+        cContainerCode                        = "AuthProvHist":U
+        opoContainer                          = NEW cls.mipwscontainer(cContainerCode, "99%":U, "":U, WarpSpeed:BaseClass, TRUE)
+        opoContainer:ContainerTitle           = "Provider History":U
+        opoContainer:RowsToRender             = ?
+        opoContainer:ViewOnly                 = FALSE
+        opoContainer:ShowContainerSettings    = FALSE
+        opoContainer:Collapsable              = TRUE
+        opoContainer:ContainerMode            = Warpspeed:SubmitValue
+        opoContainer:QueryString              = "FOR EACH tt_auth_provider_history NO-LOCK ":U
+                                                   + "BY tt_auth_provider_history.auth_provider_obj"
+      
+        oControl                              = opoContainer:addControl("fcAction":U                          + cContainerCode , "wsInput":U      , "10":U , "tt_auth_provider_history.action":U                 , "CHARACTER":U, 1 , "Action":U                )   
+        oControl                              = opoContainer:addControl("fcChangeDateTime":U                  + cContainerCode , "wsInput":U      , "10":U , "tt_auth_provider_history.change_date_time":U       , "DATETIME":U , 2 , "Change Date Time":U      )        
+        oControl                              = opoContainer:addControl("fcChangeUsrId":U                     + cContainerCode , "wsInput":U      , "10":U , "tt_auth_provider_history.change_usr_id":U          , "CHARACTER":U, 3 , "Change User Id":U        )  
+        oControl                              = opoContainer:addControl("cbSequence":U                        + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.provider_sequence":U      , "CHARACTER":U, 4,  "Seq":U)                                                                                                                    
+        oControl                              = opoContainer:addControl("flAuthorised":U                      + cContainerCode, "wsCheckBox":U    , "20":U , "tt_auth_provider_history.authorised_service":U     , "LOGICAL":U ,  6,  "A/S":U)                                                                                                                                        
+        oControl                              = opoContainer:addControl("cbProviderType":U                    + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.provider_type":U          , "CHARACTER":U, 7,  "Provider Type":U)                                                                                                                        
+        oControl:RenderProcedure              = "RenderProcedure":U                                                                             
+        oControl:RenderArgument               = "AcronymSelect:ma_acAuthProviderType:=":U 
+        oControl                              = opoContainer:addControl("fiProviderNum":U                     + cContainerCode, "wsInput":U       , "8":U  , "tt_auth_provider_history.doc_num":U                , "CHARACTER":U, 8,  "Provider Number":U)
+        oControl                              = opoContainer:addControl("fdAuthGroupObj":U                    + cContainerCode, "wsCombo":U       , "10":U , "tt_auth_provider_history.auth_group_obj":U         , "CHARACTER":U, 10, "Auth Group":U)                                                                                                                                                                                                   
+        oControl                              = opoContainer:addControl("fiDiscipline":U                      + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.pr_type":U                , "CHARACTER":U, 11, "Disc":U)
+        oControl                              = opoContainer:addControl("fiSubDiscipline":U                   + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.sub_pr_type":U            , "CHARACTER":U, 12, "Sub-Dis":U)                                     
+        oControl                              = opoContainer:addControl("fcProviderBaseRate":U                + cContainerCode, "wsInput":U       , "18":U , "tt_auth_provider_history.default_base_rate":U      , "CHARACTER":U, 13, "Default<br>Base<br>Rate":U)
+        oControl                              = opoContainer:addControl("fcProviderArsRate":U                 + cContainerCode, "wsInput":U       , "18":U , "tt_auth_provider_history.default_ars_rate":U       , "CHARACTER":U, 14, "Default<br>Ars<br>Rate":U)
+        oControl                              = opoContainer:addControl("cbOverrideBaseRate":U                + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.override_base_rate":U     , "CHARACTER":U, 15, "Override<br>Base<br>Rate":U)
+        oControl                              = opoContainer:addControl("cbOverrideArsRate":U                 + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.override_ars_rate":U      , "CHARACTER":U, 16, "Override<br>Ars<br>Rate":U)                                                                                               
+        oControl                              = opoContainer:addControl("flMainProvider":U                    + cContainerCode, "wsCheckBox":U    , "18":U , "tt_auth_provider_history.main_provider":U          , "LOGICAL":U  , 17, "Main":U)
+        oControl                              = opoContainer:addControl("flAuthoriseAllServices":U            + cContainerCode, "wsCheckBox":U    , "18":U , "tt_auth_provider_history.authorise_all_services":U , "LOGICAL":U  , 19, "Authorise<br>All<br>Services":U)
+        oControl                              = opoContainer:addControl("fiAttProviderNum":U                  + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.group_doc_num":U          , "CHARACTER":U, 20, "Associated Provider":U)
+        oControl                              = opoContainer:addControl("fdStartDate":U                       + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.start_date":U             , "DATE":U     , 24, "":U)
+        oControl                              = opoContainer:addControl("cbStartAmPm":U                       + cContainerCode, "wsCombo":U       , "3":U  , "tt_auth_provider_history.start_ampm":U             , "LOGICAL":U  , 24, "Start Date":U)
+        oControl:AdditionalItems              = "AM=AM|PM=PM":U                                                                                                               
+        oControl:CellLayoutMask               = "&1 &2":U    
+        oControl                              = opoContainer:addControl("fdEndDate":U                         + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.end_date":U               , "DATE":U     , 25, "End Date":U)
+        oControl                              = opoContainer:addControl("cbEndAmPm":U                         + cContainerCode, "wsCombo":U       , "3":U  , "tt_auth_provider_history.end_ampm":U               , "LOGICAL":U  , 25, "End Date":U)
+        oControl:AdditionalItems              = "AM=AM|PM=PM":U                                                                                                               
+        oControl:CellLayoutMask               = "&1 &2":U    
+        oControl                              = opoContainer:addControl("fiClaimCode":U                       + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.claim_code":U             , "INTEGER":U  , 26, "Claim<br>Code":U)
+        oControl                              = opoContainer:addControl("cbClaimType":U                       + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.claim_type":U             , "CHARACTER":U, 27, "Claim<br>Type":U)                                                                       
+        oControl                              = opoContainer:addControl("cbStatus":U                          + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.auth_status":U            , "INTEGER":U  , 28, "Auth Status":U)
+        oControl:RenderProcedureHandle        = mipEnv:Health:maUIService:RenderProcedureHandle                                                                                                
+        oControl:RenderProcedure              = "RenderProcedure":U                                                                                                                            
+        oControl:RenderArgument               = "FullSystemStatusCombo":U    
+
+        oControl                              = opoContainer:addControl("fcReason":U                          + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.auth_status_note":U       , "CHARACTER":U, 29, "Status<br>Reason":U)
+        oControl                              = opoContainer:addControl("fcCopayOverrideNote":U               + cContainerCode, "wsInput":U       , "3":U  , "tt_auth_provider_history.copay_override_note":U    , "INTEGER":U  , 30, "Co-payment<br>Override<br> Reason":U)   
+        oControl                              = opoContainer:addControl("fdQuantityAuth":U                    + cContainerCode, "wsInput":U       , "5":U  , "tt_auth_provider_history.quantity_auth":U          , "DECIMAL":U  , 34, "Quantity<br>Auth":U)
+        oControl                              = opoContainer:addControl("fdAmountAuth":U                      + cContainerCode, "wsInput":U       , "12":U , "tt_auth_provider_history.amount_auth":U            , "DECIMAL":U  , 35, "Amount<br>Auth":U)
+        oControl                              = opoContainer:addControl("fdAmountReq":U                       + cContainerCode, "wsInput":U       , "12":U , "tt_auth_provider_history.amount_requested":U       , "DECIMAL":U  , 36, "Amount<br>Request":U)
+        oControl                              = opoContainer:addControl("fdQtyReq":U                          + cContainerCode, "wsInput":U       , "12":U , "tt_auth_provider_history.quantity_requested":U     , "DECIMAL":U  , 37, "Qty<br>Request":U)
+        oControl                              = opoContainer:addControl("flPmbIndicator":U                    + cContainerCode, "wsCheckBox":U    , "12":U , "tt_auth_provider_history.pmb_indicator":U          , "LOGICAL":U  , 40, "PMB<br>Indicator":U)
+        oControl                              = opoContainer:addControl("flLosCalculation":U                  + cContainerCode, "wsCheckBox":U    , "12":U , "tt_auth_provider_history.los_calculation":U        , "LOGICAL":U  , 41, "System<br>LOS<br>Calculation":U)
+     // oControl                              = opoContainer:addControl("fcAccountReference":U                + cContainerCode, "wsInput":U       , "10":U , "tt_auth_provider_history.account_reference":U      , "CHARACTER":U, 33, "Account<br>Reference":U)
+         .
+      ASSIGN oContainerProperties                        = NEW cls.wscontainerproperties(opoContainer)
+                oContainerProperties:DefaultLess            = TRUE
+                oContainerProperties:NumberVisibleControls  = 1
+                oContainerProperties:CollapsableControlList = "fiAttProviderNum":U     + cContainerCode + ",":U // + "buAttProviderBtn":U       + cContainerCode + ",":U   
+                                                            + "fiAttDiscipline":U      + cContainerCode + ",":U 
+                                                          //  + "buAttDiscipline":U      + cContainerCode + ",":U + "fiAttSubDiscipline":U     + cContainerCode + ",":U 
+                                                          //  + "buAttSubDiscipline":U   + cContainerCode + ",":U + "cbOverrideBaseRate":U     + cContainerCode + ",":U 
+                                                          //  + "cbOverrideArsRate":U    + cContainerCode + ",":U + "fcAccountReference":U     + cContainerCode + ",":U
+                                                            + "fdAuthGroupObj":U       + cContainerCode + ",":U + "flAuthoriseAllServices":U + cContainerCode + ",":U
+                                                            + "fcCopayOverrideNote":U  + cContainerCode + ",":U //+ "fcRateChangeType":U       + cContainerCode + ",":U
+                                                            + "fdAmountReq":U          + cContainerCode + ",":U + "fdQtyReq":U               + cContainerCode.                                                     
+
+      mipEnv:Health:maUiService:prepareCustomizedContainer(INPUT opoContainer, INPUT oContainerProperties). 
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
 
   { mip/inc/mipcatcherror.i }  
   
@@ -711,51 +880,75 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_Coding :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
 ------------------------------------------------------------------------------*/
-DEFINE VARIABLE oControl       AS cls.mipwscontrol NO-UNDO.
-DEFINE VARIABLE lSuccess       AS LOGICAL          NO-UNDO.
-DEFINE VARIABLE iControl       AS INTEGER          NO-UNDO.
-DEFINE VARIABLE cContainerCode AS CHARACTER        NO-UNDO.
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
 
-ASSIGN 
-  cContainerCode                               = "AuthCodingHist":U
-  goCntAuthCodingHist                          = NEW cls.mipwscontainer(cContainerCode, "99%":U, "":U, WarpSpeed:BaseClass, TRUE)
-  goCntAuthCodingHist:ContainerTitle           = "Coding History":U
-  goCntAuthCodingHist:RowsToRender             = ?
-  goCntAuthCodingHist:ViewOnly                 = FALSE
-  goCntAuthCodingHist:ShowContainerSettings    = FALSE
-  goCntAuthCodingHist:Collapsable              = TRUE
-  goCntAuthCodingHist:ContainerMode            = Warpspeed:SubmitValue
-  goCntAuthCodingHist:QueryString              = "FOR EACH tt_auth_coding_history NO-LOCK ":U
-                                               + "BY tt_auth_coding_history.auth_coding_obj"
+  DEFINE VARIABLE oControl       AS cls.mipwscontrol NO-UNDO.
+  DEFINE VARIABLE lSuccess       AS LOGICAL          NO-UNDO.
+  DEFINE VARIABLE iControl       AS INTEGER          NO-UNDO.
+  DEFINE VARIABLE cContainerCode AS CHARACTER        NO-UNDO.
 
-  // Controls 
-  oControl = goCntAuthCodingHist:addControl("fc_action":U                    + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.action":U                   , "CHARACTER":U ,  2 , "Record Action":U           )  
-  oControl = goCntAuthCodingHist:addControl("fc_change_date_time":U          + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.change_date_time":U         , "DATETIME":U  ,  3 , "Change Datetime":U         )   
-  oControl = goCntAuthCodingHist:addControl("fc_change_usr_id":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.change_usr_id":U            , "CHARACTER":U ,  4 , "Change User":U             )        
-  oControl = goCntAuthCodingHist:addControl("fc_line_number":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.line_number":U              , "INTEGER":U   ,  5 , "Line Number":U             )  
-  oControl = goCntAuthCodingHist:addControl("fc_ass_diag_obj":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.ass_diag_obj":U             , "DECIMAL":U   ,  6 , "Associated diagnosis Obj":U)  
-  oControl = goCntAuthCodingHist:addControl("fc_coding_status":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.coding_status":U            , "INTEGER":U   , 12 , "Status":U                  )    
-  oControl = goCntAuthCodingHist:addControl("fc_coding_status_note":U        + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.coding_status_note":U       , "CHARACTER":U , 13 , "Reason":U                  )    
-  oControl = goCntAuthCodingHist:addControl("fc_coding_type":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.coding_type":U              , "CHARACTER":U , 14 , "Coding Type":U             )  
-  oControl = goCntAuthCodingHist:addControl("fc_end_date":U                  + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.end_date":U                 , "DATE":U      , 15 , "End Date":U                )  
-  oControl = goCntAuthCodingHist:addControl("fc_morph_diag_obj":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.morph_diag_obj":U           , "DECIMAL":U   , 16 , "Morphology":U              )    
-  oControl = goCntAuthCodingHist:addControl("fc_owning_alt_value":U          + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_alt_value":U         , "CHARACTER":U , 17 , "Code":U                    )  
-  oControl = goCntAuthCodingHist:addControl("fc_owning_entity_mnemonic":U    + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_entity_mnemonic":U   , "CHARACTER":U , 18 , "Owning Entity":U           )    
-  oControl = goCntAuthCodingHist:addControl("fc_owning_key":U                + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_key":U               , "CHARACTER":U , 19 , "Owning Key":U              )  
-  oControl = goCntAuthCodingHist:addControl("fc_owning_obj":U                + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_obj":U               , "DECIMAL":U   , 20 , "Owning Obj":U              )  
-  oControl = goCntAuthCodingHist:addControl("fc_pmb_indicator":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.pmb_indicator":U            , "LOGICAL":U   , 21 , "PMB":U                     )   
-  oControl = goCntAuthCodingHist:addControl("fc_primary_code":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.primary_code":U             , "LOGICAL":U   , 22 , "Primary":U                 )    
-  oControl = goCntAuthCodingHist:addControl("fc_related_alt_value":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_alt_value":U        , "CHARACTER":U , 23 , "Related Code":U            )    
-  oControl = goCntAuthCodingHist:addControl("fc_related_entity_mnemonic":U   + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_entity_mnemonic":U  , "CHARACTER":U , 24 , "Related Entity":U          )      
-  oControl = goCntAuthCodingHist:addControl("fc_related_key":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_key":U              , "CHARACTER":U , 25 , "Related Key":U             )  
-  oControl = goCntAuthCodingHist:addControl("fc_related_obj":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_obj":U              , "DECIMAL":U   , 26 , "Related Obj":U             )  
-  oControl = goCntAuthCodingHist:addControl("fc_sequence":U                  + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.sequence":U                 , "INTEGER":U   , 27 , "Seq":U                     )    
-  oControl = goCntAuthCodingHist:addControl("fc_start_date ":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.start_date":U               , "CHARACTER":U , 28 , "Start Date ":U             )    
-  oControl = goCntAuthCodingHist:addControl("fc_body_region":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.body_region":U              , "CHARACTER":U , 30 , "Body Region":U             )  
-  .  
+  CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+      ASSIGN 
+        cContainerCode                        = "AuthCodingHist":U
+        opoContainer                          = NEW cls.mipwscontainer(cContainerCode, "99%":U, "":U, WarpSpeed:BaseClass, TRUE)
+        opoContainer:ContainerTitle           = "Coding History":U
+        opoContainer:RowsToRender             = ?
+        opoContainer:ViewOnly                 = FALSE
+        opoContainer:ShowContainerSettings    = FALSE
+        opoContainer:Collapsable              = TRUE
+        opoContainer:ContainerMode            = Warpspeed:SubmitValue
+        opoContainer:QueryString              = "FOR EACH tt_auth_coding_history NO-LOCK ":U
+                                                     + "BY tt_auth_coding_history.auth_coding_obj"
+      
+        // Controls 
+        oControl                       = opoContainer:addControl("fcAction":U                    + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.action":U                   , "CHARACTER":U ,  2 , "Action":U           )  
+        oControl                       = opoContainer:addControl("fcChangeDateTime":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.change_date_time":U         , "DATETIME":U  ,  3 , "Change Datetime":U         )   
+        oControl                       = opoContainer:addControl("fcChangeUsrId":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.change_usr_id":U            , "CHARACTER":U ,  4 , "Change User":U             )        
+        oControl                       = opoContainer:addControl("fcCodingStatus":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.coding_status":U            , "INTEGER":U   , 12 , "Status":U                  )    
+        oControl:RenderProcedureHandle = mipEnv:Health:maUIService:RenderProcedureHandle                                                                                                
+        oControl:RenderProcedure       = "RenderProcedure":U                                                                                                                            
+        oControl:RenderArgument        = "FullSystemStatusCombo":U  
+        oControl                       = opoContainer:addControl("fcCodingStatusNote":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.coding_status_note":U       , "CHARACTER":U , 13 , "Reason":U                  )    
+        oControl                       = opoContainer:addControl("fcCodingType":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.coding_type":U              , "CHARACTER":U , 14 , "Coding Type":U             )  
+        oControl:RenderProcedure       = "RenderProcedure":U
+        oControl:RenderArgument        = "AcronymSelect:ma_acICDCodingType:=":U
+        oControl                       = opoContainer:addControl("fcEndDate":U                  + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.end_date":U                 , "DATE":U      , 15 , "End Date":U                )  
+        oControl                       = opoContainer:addControl("fcOwningAltValue":U           + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_alt_value":U         , "CHARACTER":U , 17 , "Code":U                    )  
+        oControl                       = opoContainer:addControl("fcOwningEntityMnemonic":U     + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_entity_mnemonic":U   , "CHARACTER":U , 18 , "Owning Entity":U           )    
+        oControl                       = opoContainer:addControl("fcPmbIndicator":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.pmb_indicator":U            , "LOGICAL":U   , 21 , "PMB":U                     )   
+        oControl                       = opoContainer:addControl("fcPrimaryCode":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.primary_code":U             , "LOGICAL":U   , 22 , "Primary":U                 )    
+        oControl                       = opoContainer:addControl("fcRelatedAltValue":U          + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_alt_value":U        , "CHARACTER":U , 23 , "Related Code":U            )    
+        oControl                       = opoContainer:addControl("fcRelatedEntityMnemonic":U    + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_entity_mnemonic":U  , "CHARACTER":U , 24 , "Related Entity":U          )      
+        oControl                       = opoContainer:addControl("fcSequence":U                 + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.sequence":U                 , "INTEGER":U   , 27 , "Seq":U                     )    
+        oControl                       = opoContainer:addControl("fcStartDate ":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.start_date":U               , "CHARACTER":U , 28 , "Start Date ":U             )    
+        oControl                       = opoContainer:addControl("fcBodyRegion":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.body_region":U              , "CHARACTER":U , 30 , "Body Region":U             )  
+        
+        //oControl = goCntAuthCodingHist:addControl("fc_owning_key":U                + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_key":U               , "CHARACTER":U , 19 , "Owning Key":U              )  
+        //oControl = goCntAuthCodingHist:addControl("fc_owning_obj":U                + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.owning_obj":U               , "DECIMAL":U   , 20 , "Owning Obj":U              )  
+        //oControl = goCntAuthCodingHist:addControl("fc_related_key":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_key":U              , "CHARACTER":U , 25 , "Related Key":U             )  
+        //oControl = goCntAuthCodingHist:addControl("fc_morph_diag_obj":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.morph_diag_obj":U           , "DECIMAL":U   , 16 , "Morphology":U              )    
+        //oControl = goCntAuthCodingHist:addControl("fc_related_obj":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.related_obj":U              , "DECIMAL":U   , 26 , "Related Obj":U             )  
+        //oControl = goCntAuthCodingHist:addControl("fc_ass_diag_obj":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.ass_diag_obj":U             , "DECIMAL":U   ,  6 , "Associated diagnosis Obj":U)  
+        //oControl = goCntAuthCodingHist:addControl("fc_line_number":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_coding_history.line_number":U              , "INTEGER":U   ,  5 , "Line Number":U             )  
+      .  
+    
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
+
+
 
   { mip/inc/mipcatcherror.i }
   
@@ -772,10 +965,25 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_Crosswalk :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
 ------------------------------------------------------------------------------*/
-  
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
+
+  CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
 
   { mip/inc/mipcatcherror.i }
   
@@ -792,56 +1000,82 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_Detail :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
 ------------------------------------------------------------------------------*/
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
+  
+  
 DEFINE VARIABLE oControl       AS cls.mipwscontrol NO-UNDO.
 DEFINE VARIABLE lSuccess       AS LOGICAL          NO-UNDO.
 DEFINE VARIABLE iControl       AS INTEGER          NO-UNDO.
 DEFINE VARIABLE cContainerCode AS CHARACTER        NO-UNDO.
 
-ASSIGN 
-  cContainerCode                               = "AuthDetailHist":U
-  goCntAuthDetailHist                          = NEW cls.mipwscontainer(cContainerCode, "99%":U, "":U, WarpSpeed:BaseClass, TRUE)
-  goCntAuthDetailHist:ContainerTitle           = "Detail History":U
-  goCntAuthDetailHist:RowsToRender             = ?
-  goCntAuthDetailHist:ViewOnly                 = FALSE
-  goCntAuthDetailHist:ShowContainerSettings    = FALSE         
-  goCntAuthDetailHist:Collapsable              = TRUE
-  goCntAuthDetailHist:ContainerMode            = Warpspeed:SubmitValue
-  goCntAuthDetailHist:QueryString              = "FOR EACH tt_auth_detail_history NO-LOCK ":U
-                                               + "BY tt_auth_detail_history.auth_detail_obj"
- 
-  oControl                  = goCntAuthDetailHist:addControl("fc_record_action":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.record_action":U          , "CHARACTER":U,  2 , "Record Action":U         )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_action":U                   + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.action":U                 , "CHARACTER":U,  3 , "Action":U                )   
-  oControl                  = goCntAuthDetailHist:addControl("fc_change_date_time":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.change_date_time":U       , "DATETIME":U ,  4 , "Change Date Time":U      )        
-  oControl                  = goCntAuthDetailHist:addControl("fc_change_usr_id":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.change_usr_id":U          , "CHARACTER":U,  5 , "Change User Id":U        )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_auth_provider_obj":U        + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.auth_provider_obj":U      , "DECIMAL":U  ,  6 , "Auth Provider Obj":U     )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_owning_alt_value":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_alt_value":U       , "CHARACTER":U, 12 , "Owning Alt Value":U      )    
-  oControl                  = goCntAuthDetailHist:addControl("fc_owning_entity_mnemonic":U   + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_entity_mnemonic":U , "CHARACTER":U, 13 , "Owning Entity Mnemonic":U)    
-  oControl                  = goCntAuthDetailHist:addControl("fc_owning_key":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_key":U             , "CHARACTER":U, 14 , "Owning Key":U            )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_owning_obj":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_obj":U             , "DECIMAL":U  , 15 , "Owning Obj":U            )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_loc_sequence":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.loc_sequence":U           , "INTEGER":U  , 16 , "LOC Sequence":U          )    
-  oControl                  = goCntAuthDetailHist:addControl("fc_quantity_los":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.quantity_los":U           , "DECIMAL":U  , 17 , "Quantity LOS":U          )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_minutes_auth":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.minutes_auth":U           , "INTEGER":U  , 18 , "Minutes Auth":U          )    
-  oControl                  = goCntAuthDetailHist:addControl("fc_start_date":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.start_date":U             , "DATE":U     , 20 , "Start Date":U            )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_start_ampm":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.start_ampm":U             , "LOGICAL":U  , 20 , "Start Date":U            ) 
-  oControl:AdditionalItems  = "AM=AM|PM=PM":U                                                                                                               
-  oControl:CellLayoutMask   = "&1 &2":U    
-  oControl                  = goCntAuthDetailHist:addControl("fc_end_date":U                 + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.end_date":U               , "DATE":U     , 21 , "End Date":U              )   
-  oControl                  = goCntAuthDetailHist:addControl("fc_end_ampm":U                 + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.end_ampm":U               , "LOGICAL":U  , 21 , "End Date":U              )    
-  oControl:AdditionalItems  = "AM=AM|PM=PM":U                                                                                                               
-  oControl:CellLayoutMask   = "&1 &2":U   
-  oControl                  = goCntAuthDetailHist:addControl("fc_fixed_item_cost":U          + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.fixed_item_cost":U        , "DECIMAL":U  , 23 , "Fixed Item Cost":U       )    
-  oControl                  = goCntAuthDetailHist:addControl("fc_quantity_auth":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.quantity_auth":U          , "DECIMAL":U  , 24 , "Qauntity Auth":U         )      
-  oControl                  = goCntAuthDetailHist:addControl("fc_amount_paid":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.amount_paid":U            , "DECIMAL":U  , 25 , "Amount Paid":U           )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_claim_code":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.claim_code":U             , "INTEGER":U  , 26 , "Claim Code":U            )  
-  oControl                  = goCntAuthDetailHist:addControl("fc_claim_type":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.claim_type":U             , "CHARACTER":U, 27 , "Claim Type":U            )    
-  oControl                  = goCntAuthDetailHist:addControl("fc_line_restriction":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.line_restriction":U       , "CHARACTER":U, 28 , "Line Restriction":U      )    
-  oControl                  = goCntAuthDetailHist:addControl("fc_auth_status":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.auth_status":U            , "INTEGER":U  , 29 , "Auth Status":U           )    
-  oControl                  = goCntAuthDetailHist:addControl("fc_auth_status_note":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.auth_status_note":U       , "CHARACTER":U, 30 , "Auth Status Note":U      )    
+CASE ipcContainerType :
+  WHEN "TABLE":U THEN 
+  DO:
 
-  .                                        
+    ASSIGN 
+      cContainerCode                        = "AuthDetailHist":U
+      opoContainer                          = NEW cls.mipwscontainer(cContainerCode, "99%":U, "":U, WarpSpeed:BaseClass, TRUE)
+      opoContainer:ContainerTitle           = "Detail History":U
+      opoContainer:RowsToRender             = ?
+      opoContainer:ViewOnly                 = FALSE
+      opoContainer:ShowContainerSettings    = FALSE         
+      opoContainer:Collapsable              = TRUE
+      opoContainer:ContainerMode            = Warpspeed:SubmitValue
+      opoContainer:QueryString              = "FOR EACH tt_auth_detail_history NO-LOCK ":U
+                                                   + "BY tt_auth_detail_history.auth_detail_obj"
+     
+      oControl                              = opoContainer:addControl("fc_action":U                   + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.action":U                 , "CHARACTER":U,  3 , "Action":U                )   
+      oControl                              = opoContainer:addControl("fc_change_date_time":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.change_date_time":U       , "DATETIME":U ,  4 , "Change Date Time":U      )        
+      oControl                              = opoContainer:addControl("fc_change_usr_id":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.change_usr_id":U          , "CHARACTER":U,  5 , "Change User Id":U        )  
+      oControl                              = opoContainer:addControl("fc_auth_provider_obj":U        + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.auth_provider_obj":U      , "DECIMAL":U  ,  6 , "Auth Provider":U     )  
+      oControl:RenderProcedure              = "WebRenderProcedure":U
+      oControl:RenderArgument               = "AuthProviderDetail":U
+      oControl                              = opoContainer:addControl("fc_owning_alt_value":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_alt_value":U       , "CHARACTER":U, 12 , "Owning Alt Value":U      )    
+      oControl                              = opoContainer:addControl("fc_owning_entity_mnemonic":U   + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_entity_mnemonic":U , "CHARACTER":U, 13 , "Owning Entity Mnemonic":U)    
+      oControl                              = opoContainer:addControl("fc_owning_key":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_key":U             , "CHARACTER":U, 14 , "Owning Key":U            )  
+      oControl                              = opoContainer:addControl("fc_loc_sequence":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.loc_sequence":U           , "INTEGER":U  , 16 , "LOC Sequence":U          )    
+      oControl                              = opoContainer:addControl("fc_quantity_los":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.quantity_los":U           , "DECIMAL":U  , 17 , "Quantity LOS":U          )  
+      oControl                              = opoContainer:addControl("fc_minutes_auth":U             + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.minutes_auth":U           , "INTEGER":U  , 18 , "Minutes Auth":U          )    
+      oControl                              = opoContainer:addControl("fc_start_date":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.start_date":U             , "DATE":U     , 20 , "Start Date":U            )  
+      oControl                              = opoContainer:addControl("fc_start_ampm":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.start_ampm":U             , "LOGICAL":U  , 20 , "Start Date":U            ) 
+      oControl:AdditionalItems              = "AM=AM|PM=PM":U                                                                                                               
+      oControl:CellLayoutMask               = "&1 &2":U    
+      oControl                              = opoContainer:addControl("fc_end_date":U                 + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.end_date":U               , "DATE":U     , 21 , "End Date":U              )   
+      oControl                              = opoContainer:addControl("fc_end_ampm":U                 + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.end_ampm":U               , "LOGICAL":U  , 21 , "End Date":U              )    
+      oControl:AdditionalItems              = "AM=AM|PM=PM":U                                                                                                               
+      oControl:CellLayoutMask               = "&1 &2":U   
+      oControl                              = opoContainer:addControl("fc_fixed_item_cost":U          + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.fixed_item_cost":U        , "DECIMAL":U  , 23 , "Fixed Item Cost":U       )    
+      oControl                              = opoContainer:addControl("fc_quantity_auth":U            + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.quantity_auth":U          , "DECIMAL":U  , 24 , "Qauntity Auth":U         )      
+      oControl                              = opoContainer:addControl("fc_amount_paid":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.amount_paid":U            , "DECIMAL":U  , 25 , "Amount Paid":U           )  
+      oControl                              = opoContainer:addControl("fc_claim_code":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.claim_code":U             , "INTEGER":U  , 26 , "Claim Code":U            )  
+      oControl                              = opoContainer:addControl("fc_claim_type":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.claim_type":U             , "CHARACTER":U, 27 , "Claim Type":U            )    
+      oControl                              = opoContainer:addControl("fc_line_restriction":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.line_restriction":U       , "CHARACTER":U, 28 , "Line Restriction":U      )    
+      oControl:RenderProcedureHandle        = mipEnv:Health:maUiService:RenderProcedureHandle
+      oControl:RenderArgument               = "LineRestriction":U
+      oControl:RenderProcedure              = "RenderProcedure":U
+      
+      oControl                              = opoContainer:addControl("fc_auth_status":U              + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.auth_status":U            , "INTEGER":U  , 29 , "Auth Status":U           )    
+      oControl:RenderProcedureHandle        = mipEnv:Health:maUIService:RenderProcedureHandle                                                                                                
+      oControl:RenderProcedure              = "RenderProcedure":U                                                                                                                            
+      oControl:RenderArgument               = "FullSystemStatusCombo":U  
+      oControl                              = opoContainer:addControl("fc_auth_status_note":U         + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.auth_status_note":U       , "CHARACTER":U, 30 , "Auth Status Note":U      )    
+   // oControl                              = opoContainer:addControl("fc_owning_obj":U               + cContainerCode , "wsInput":U , "10":U ,  "tt_auth_detail_history.owning_obj":U             , "DECIMAL":U  , 15 , "Owning Obj":U            )  
+  
+    .       
+  END. // WHEN "TABLE"
+  WHEN "FORM":U THEN
+  DO:
+    
+  END. // WHEN "FORM"
+END CASE. // CASE ipcContainerType
+                                 
 
   { mip/inc/mipcatcherror.i }
   
@@ -858,20 +1092,25 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_Episode :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
 ------------------------------------------------------------------------------*/
-  ASSIGN 
-    
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
 
-    oControl = oContainer:addControl("fcAction"         + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 1 , "Action" )
-    oControl = oContainer:addControl("fcChangeDateTime" + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 2 , "Change Date Time" )
-    oControl = oContainer:addControl("fcChangeUserID"   + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 3 , "Change User ID" )
-    oControl = oContainer:addControl("fcDependant"      + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 4 , "Dependant" )
-    oControl = oContainer:addControl("fcEpisodeNumber"  + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 5 , "Episode Number" )
-    oControl = oContainer:addControl("fcMemberNumber"   + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 6 , "Member Number" )
-    oControl = oContainer:addControl("fcSequence"       + cContaineCode , "wsInput" , "10" , "" , "CHARACTER" , 7 , "Sequence" )
-  .
+  CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
 
   { mip/inc/mipcatcherror.i }
   
@@ -889,10 +1128,25 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_MCSavings :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
 ------------------------------------------------------------------------------*/
-  
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
+
+  CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
 
   { mip/inc/mipcatcherror.i }
   
@@ -910,13 +1164,29 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_Copay :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
-------------------------------------------------------------------------------*/  
+------------------------------------------------------------------------------*/
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
+
   DEFINE VARIABLE oControl AS cls.mipwscontrol NO-UNDO.
   DEFINE VARIABLE iControl AS INTEGER          NO-UNDO.
 
-       
+  CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
+
   { mip/inc/mipcatcherror.i }
   
 END PROCEDURE.
@@ -932,13 +1202,30 @@ END PROCEDURE.
 PROCEDURE WebFormDefinition_Limit :
 /*------------------------------------------------------------------------------
   Purpose:     
-  Parameters:  <none>
+  Parameters:  Container type : TABLE/FORM
+               Container Object
+               Container Object Properties
   Notes:       
-------------------------------------------------------------------------------*/  
+------------------------------------------------------------------------------*/
+  DEFINE INPUT  PARAMETER ipcContainerType       AS CHARACTER                 NO-UNDO.
+  DEFINE OUTPUT PARAMETER opoContainer           AS cls.mipwscontainer        NO-UNDO. 
+  DEFINE OUTPUT PARAMETER opoContainerProperties AS cls.wscontainerproperties NO-UNDO.
+
+
   DEFINE VARIABLE oControl AS cls.mipwscontrol NO-UNDO.
   DEFINE VARIABLE iControl AS INTEGER          NO-UNDO.
 
-       
+   CASE ipcContainerType :
+    WHEN "TABLE":U THEN 
+    DO:
+
+    END. // WHEN "TABLE"
+    WHEN "FORM":U THEN
+    DO:
+      
+    END. // WHEN "FORM"
+  END CASE. // CASE ipcContainerType
+
   { mip/inc/mipcatcherror.i }
   
 END PROCEDURE.
@@ -987,29 +1274,9 @@ PROCEDURE WebFormDefinition_Filter :
     oControl:CellSnippet       = "align='right'":U
     oControl:ColumnSpan        = 2
     oControl:SubContainer      = wsUiService:getButtonContainer(gclsWob:ObjectCode + gclsWob:Mode + "BtnBar":U, "Back:Search":U)
+    oButton                    = oControl:SubContainer:getControl("btnSearch":U) 
+    oButton:ControlSubType     = "SUBMIT":U
     .
-       
-  { mip/inc/mipcatcherror.i }
-  
-END PROCEDURE.
-
-/* _UIB-CODE-BLOCK-END */
-&ANALYZE-RESUME
-
-&ENDIF
-
-&IF DEFINED(EXCLUDE-WebFormDefinition_TP) = 0 &THEN
-
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE WebFormDefinition_TP Procedure 
-PROCEDURE WebFormDefinition_TP :
-/*------------------------------------------------------------------------------
-  Purpose:     
-  Parameters:  <none>
-  Notes:       
-------------------------------------------------------------------------------*/
-  DEFINE VARIABLE oControl AS cls.mipwscontrol NO-UNDO.
-  DEFINE VARIABLE lSuccess AS LOGICAL          NO-UNDO.
-  
        
   { mip/inc/mipcatcherror.i }
   
@@ -1050,9 +1317,10 @@ PROCEDURE WebRenderProcedure :
 ------------------------------------------------------------------------------*/
   DEFINE INPUT PARAMETER ipoControl AS cls.mipwscontrol NO-UNDO.
 
-  DEFINE VARIABLE lSuccess    AS LOGICAL   NO-UNDO.
-  DEFINE VARIABLE cGroupCode  AS CHARACTER NO-UNDO.
-  DEFINE VARIABLE cBufferName AS CHARACTER NO-UNDO.
+  DEFINE VARIABLE lSuccess     AS LOGICAL   NO-UNDO.
+  DEFINE VARIABLE cGroupCode   AS CHARACTER NO-UNDO.
+  DEFINE VARIABLE cBufferName  AS CHARACTER NO-UNDO.
+  DEFINE VARIABLE dAuthTypeObj AS DECIMAL   NO-UNDO .
                                                              
   CASE ipoControl:RenderArgument:
 
@@ -1064,36 +1332,58 @@ PROCEDURE WebRenderProcedure :
       {&OUT}
       "<center>":U.
       
-      CASE gclsWob:Mode:
-        /* -- Output for Search State ------------------------------------------- */
-        WHEN "Search":U THEN
-        DO:
-          
-        END. /*WHEN "Search":U THEN*/
+      IF gclsWob:Mode = "Search":U
+      THEN
+        goCntFilter:renderContainer("":U, "FORM":U, FALSE). 
 
-        /* -- Output for Maint State -------------------------------------------- */
-        
-        WHEN "Maint":U THEN
-        DO:
-          
-        END. /*WHEN "Maint":U THEN*/
-        
-        WHEN "Enquiry":U THEN
-        DO:
-          goCntFilter:renderContainer("":U, "FORM":U, FALSE). 
-          
-          goCntAuthHist:renderContainer      ("":U , "TABLE":U , TRUE) .
-          goCntAuthProvHist:renderContainer  ("":U , "TABLE":U , TRUE) .
-          goCntAuthCodingHist:renderContainer("":U , "TABLE":U , TRUE) .
-          goCntAuthDetailHist:renderContainer("":U , "TABLE":U , TRUE) .
+      RENDER-CONTAINER-BLK:
+      FOR EACH ttRegisteredContainer :
 
-          
-        END. /*WHEN "Enquiry":U THEN*/
-      END CASE. /* gclsWob:Mode */                                              
-      
+        ASSIGN oContainer = ttRegisteredContainer.ContainerObject.
+
+        oContainer:renderContainer("":U , ttRegisteredContainer.ContainerType , TRUE) .
+
+      END. // RENDER-CONTAINER-BLK
+                                                
       {&OUT}
       "</center>":U.
-    END. /* WHEN "WebRenderProcedure":U */            
+    END. /* WHEN "WebRenderProcedure":U */     
+    WHEN "AuthType":U THEN
+    DO:
+      
+      ASSIGN dAuthTypeObj = DECIMAL(ipoControl:ParentContainer:ContainerQuery:getFieldAttribute("tt_auth_history.auth_type_obj":U, "BUFFER-VALUE":U)) .
+      
+      FIND FIRST tt_auth_type 
+           WHERE tt_auth_type.auth_type_obj = dAuthTypeObj NO-ERROR. 
+           
+      {mip/inc/mipthrowerror.i &IgnoreErrors = 'PROGRESS:565' &ResetIgnoredErrors = TRUE }
+      
+      IF AVAILABLE tt_auth_type 
+      THEN 
+        ASSIGN ipoControl:ControlValue = tt_auth_type.auth_type .
+        
+      ipoControl:renderAsInput() .
+      
+    END. // WHEN "AuthType":U 
+    WHEN "AuthProviderDetail":U THEN
+    DO:
+      DEFINE VARIABLE dAuthProvObj AS DECIMAL NO-UNDO.
+      
+      ASSIGN dAuthProvObj = DECIMAL(ipoControl:ParentContainer:ContainerQuery:getFieldAttribute("tt_auth_detail_history.auth_provider_obj":U, "BUFFER-VALUE":U)).
+    
+      FIND FIRST tt_auth_provider
+           WHERE tt_auth_provider.auth_provider_obj = dAuthProvObj NO-ERROR .
+           
+      {mip/inc/mipthrowerror.i &IgnoreErrors = 'PROGRESS:565' &ResetIgnoredErrors = TRUE }
+      
+      IF NOT AVAILABLE tt_auth_provider 
+      THEN 
+        ASSIGN ipoControl:ControlValue = "Unavailable":U .
+      ELSE 
+        ASSIGN ipoControl:ControlValue = STRING(tt_auth_provider.doc_num) .
+        
+      ipoControl:renderAsInput() .
+    END.
   END CASE. /* CASE ipoControl:RenderArgument: */
 
   { mip/inc/mipcatcherror.i }
@@ -1116,8 +1406,6 @@ PROCEDURE WebRowRenderProcedure :
   Notes:       
 ------------------------------------------------------------------------------*/
   DEFINE INPUT PARAMETER ipoContainer AS cls.mipwscontainer NO-UNDO.
-  
-  DEFINE VARIABLE cGroupCode AS CHARACTER NO-UNDO.
 
   { mip/inc/mipcatcherror.i }
   
@@ -1148,6 +1436,10 @@ PROCEDURE WobShutdown :
   THEN DELETE OBJECT goCntAuthHist.
   
   DATASET dsAuthorisation:EMPTY-DATASET() .
+  DATASET dsAuthType:EMPTY-DATASET(). 
+  
+  EMPTY TEMP-TABLE ttConfiguration .
+  EMPTY TEMP-TABLE ttRegisteredContainer.
 
   { mip/inc/mipcatcherror.i } 
    
